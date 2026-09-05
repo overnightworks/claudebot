@@ -1,0 +1,26 @@
+[Unit]
+Description=Private Telegram bridge for Claude Code and Codex CLI
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=6
+
+[Service]
+Type=simple
+WorkingDirectory=/home/felix-hummert/git/atelier
+EnvironmentFile=/home/felix-hummert/git/claudebot/.env
+EnvironmentFile=/home/felix-hummert/git/claudebot/runtime.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/felix-hummert/git/claudebot/.venv/bin/python /home/felix-hummert/git/claudebot/telegram_bot.py
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=default.target

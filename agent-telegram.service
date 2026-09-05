@@ -7,9 +7,9 @@ StartLimitBurst=6
 
 [Service]
 Type=simple
-WorkingDirectory=/home/felix-hummert/git/atelier
-EnvironmentFile=/home/felix-hummert/git/claudebot/.env
-EnvironmentFile=/home/felix-hummert/git/claudebot/runtime.env
+WorkingDirectory=/home/felix-hummert/git/claudebot
+EnvironmentFile=/home/felix-hummert/.secrets/claudebot.env
+EnvironmentFile=/home/felix-hummert/.secrets/claudebot-runtime.env
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/home/felix-hummert/git/claudebot/.venv/bin/python /home/felix-hummert/git/claudebot/telegram_bot.py
 Restart=always

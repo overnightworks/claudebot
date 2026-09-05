@@ -4,14 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYTHON="$SCRIPT_DIR/.venv/bin/python"
 UNIT="$SCRIPT_DIR/agent-telegram.service"
-REMOTE_UNIT="$SCRIPT_DIR/claude-remote-control.service"
 
 cd "$SCRIPT_DIR"
 
 umask 077
 [[ -x "$PYTHON" ]] || { echo "Missing bot interpreter: $PYTHON" >&2; exit 1; }
 
-for config_file in "$SCRIPT_DIR/.env" "$SCRIPT_DIR/runtime.env"; do
+for config_file in "$HOME/.secrets/claudebot.env" "$HOME/.secrets/claudebot-runtime.env"; do
     [[ -f "$config_file" ]] || { echo "Missing configuration: $config_file" >&2; exit 1; }
     mode="$(stat -c '%a' "$config_file")"
     [[ "$mode" == "600" ]] || {
@@ -24,7 +23,6 @@ done
 "$PYTHON" -m py_compile "$SCRIPT_DIR/agent_bridge.py" "$SCRIPT_DIR/telegram_bot.py"
 
 systemctl --user link --force "$UNIT" >/dev/null
-systemctl --user link --force "$REMOTE_UNIT" >/dev/null
 systemctl --user daemon-reload
 systemctl --user enable agent-telegram.service >/dev/null
 systemctl --user restart agent-telegram.service

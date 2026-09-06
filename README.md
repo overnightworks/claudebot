@@ -37,3 +37,7 @@ Secrets and runtime settings live outside the repo in `~/.secrets`, mode 600:
 ```
 .venv/bin/python -m unittest discover -s tests -q
 ```
+
+CI instead runs `.venv/bin/python -m pytest` with branch coverage and
+uploads the resulting `coverage.xml` to SonarCloud. A "SonarCloud open
+findings" step then fails the build on any open finding in scope.

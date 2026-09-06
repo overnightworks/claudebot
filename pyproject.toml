@@ -5,11 +5,14 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "--cov=agent_bridge --cov=telegram_bot --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml"
 
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
+    # telegram_bot.py's process entry only wires the real Telegram polling
+    # loop; it has no branching logic worth a unit test.
     "if __name__ == .__main__.:",
 ]

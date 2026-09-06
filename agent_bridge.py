@@ -114,10 +114,10 @@ def discover_sessions(
 
 
 def _same_path(left: Path, right: Path) -> bool:
-    try:
-        return left.resolve() == right.resolve()
-    except OSError:
-        return False
+    # Path.resolve() defaults to strict=False, which never raises OSError:
+    # os.path.realpath swallows every lookup failure and returns its best
+    # effort instead, so there is no error path here to guard against.
+    return left.resolve() == right.resolve()
 
 
 def _discover_codex_sessions(root: Path) -> Iterable[SessionRecord]:
@@ -156,38 +156,52 @@ def _discover_claude_sessions(root: Path) -> Iterable[SessionRecord]:
     for path in root.rglob("*.jsonl"):
         if "subagents" in path.parts:
             continue
-        session_id: str | None = None
-        working_directory: Path | None = None
-        title: str | None = None
-        try:
-            with path.open(encoding="utf-8") as stream:
-                for line_number, line in enumerate(stream):
-                    if line_number >= 100:
-                        break
-                    event = json.loads(line)
-                    raw_session_id = event.get("sessionId")
-                    if raw_session_id:
-                        session_id = validate_session_id(str(raw_session_id))
-                    if event.get("cwd"):
-                        working_directory = Path(event["cwd"])
-                    if event.get("type") == "ai-title" and event.get("aiTitle"):
-                        title = str(event["aiTitle"])
-                    if session_id and working_directory and title:
-                        break
-            if session_id and working_directory:
-                records.append(
-                    SessionRecord(
-                        provider=Provider.CLAUDE,
-                        session_id=session_id,
-                        working_directory=working_directory,
-                        modified_at=path.stat().st_mtime,
-                        transcript_path=path,
-                        title=title,
-                    )
-                )
-        except (BridgeError, OSError, TypeError, json.JSONDecodeError):
-            continue
+        record = _parse_claude_session_file(path)
+        if record is not None:
+            records.append(record)
     return records
+
+
+def _parse_claude_session_file(path: Path) -> SessionRecord | None:
+    try:
+        with path.open(encoding="utf-8") as stream:
+            session_id, working_directory, title = _read_claude_session_fields(stream)
+        if not session_id or not working_directory:
+            return None
+        modified_at = path.stat().st_mtime
+    except (BridgeError, OSError, TypeError, json.JSONDecodeError):
+        return None
+    return SessionRecord(
+        provider=Provider.CLAUDE,
+        session_id=session_id,
+        working_directory=working_directory,
+        modified_at=modified_at,
+        transcript_path=path,
+        title=title,
+    )
+
+
+def _read_claude_session_fields(
+    stream: Iterable[str],
+) -> tuple[str | None, Path | None, str | None]:
+    """Scan the leading transcript lines for the session's identity and title."""
+    session_id: str | None = None
+    working_directory: Path | None = None
+    title: str | None = None
+    for line_number, line in enumerate(stream):
+        if line_number >= 100:
+            break
+        event = json.loads(line)
+        raw_session_id = event.get("sessionId")
+        if raw_session_id:
+            session_id = validate_session_id(str(raw_session_id))
+        if event.get("cwd"):
+            working_directory = Path(event["cwd"])
+        if event.get("type") == "ai-title" and event.get("aiTitle"):
+            title = str(event["aiTitle"])
+        if session_id and working_directory and title:
+            break
+    return session_id, working_directory, title
 
 
 def session_is_active(
@@ -207,24 +221,35 @@ def session_is_active(
         process_directories = proc_root.iterdir()
     except OSError:
         return False
-    for process_directory in process_directories:
-        if not process_directory.name.isdigit():
-            continue
-        if _process_group_id(process_directory) in ignored_process_groups:
-            continue
-        if _process_runs_session(process_directory, record):
-            return True
-        descriptor_directory = process_directory / "fd"
-        try:
-            for descriptor in descriptor_directory.iterdir():
-                try:
-                    if descriptor.resolve() == expected:
-                        return True
-                except OSError:
-                    continue
-        except OSError:
-            continue
-    return False
+    return any(
+        _process_owns_session(process_directory, record, expected, ignored_process_groups)
+        for process_directory in process_directories
+        if process_directory.name.isdigit()
+    )
+
+
+def _process_owns_session(
+    process_directory: Path,
+    record: SessionRecord,
+    expected_transcript: Path,
+    ignored_process_groups: AbstractSet[int],
+) -> bool:
+    if _process_group_id(process_directory) in ignored_process_groups:
+        return False
+    if _process_runs_session(process_directory, record):
+        return True
+    return _process_has_transcript_open(process_directory, expected_transcript)
+
+
+def _process_has_transcript_open(process_directory: Path, expected: Path) -> bool:
+    # descriptor.resolve() defaults to strict=False, which never raises
+    # OSError (see _same_path); only listing the fd directory itself can fail.
+    descriptor_directory = process_directory / "fd"
+    try:
+        descriptors = descriptor_directory.iterdir()
+        return any(descriptor.resolve() == expected for descriptor in descriptors)
+    except OSError:
+        return False
 
 
 def _process_group_id(process_directory: Path) -> int | None:
@@ -474,8 +499,6 @@ class AgentBridge:
             raise
         finally:
             self._active_process_groups.discard(process.pid)
-        if len(stdout) > 2_000_000 or len(stderr) > 200_000:
-            raise BridgeError("Die Agent-Ausgabe war unerwartet groß.")
         decoded_stdout = stdout.decode("utf-8", errors="replace")
         decoded_stderr = stderr.decode("utf-8", errors="replace")
         if process.returncode != 0 and not stopped_after_turn:
@@ -486,6 +509,24 @@ class AgentBridge:
                 )
             )
         return decoded_stdout, decoded_stderr
+
+
+@dataclass
+class _StreamingTasks:
+    """The concurrent tasks one agent invocation juggles while it streams output."""
+
+    stdout: asyncio.Task[bytes]
+    stderr: asyncio.Task[bytes]
+    process: asyncio.Task[int]
+    completion: asyncio.Task[bool]
+    transcript: asyncio.Task[None] | None
+
+    def all(self) -> tuple[asyncio.Task, ...]:
+        return tuple(
+            task
+            for task in (self.stdout, self.stderr, self.transcript, self.process, self.completion)
+            if task is not None
+        )
 
 
 async def _communicate_streaming(
@@ -499,14 +540,44 @@ async def _communicate_streaming(
 ) -> tuple[bytes, bytes, bool]:
     if process.stdin is None or process.stdout is None or process.stderr is None:
         raise BridgeError("Der Agent-Prozess besitzt keine vollständigen Datenkanäle.")
-    process.stdin.write(message.encode("utf-8"))
+    await _send_and_close_stdin(process.stdin, message)
+    codex_turn_completed = asyncio.Event()
+    tasks = _start_streaming_tasks(
+        process,
+        codex_reply_observer=codex_reply_observer,
+        stop_after_codex_turn=stop_after_codex_turn,
+        codex_transcript_path=codex_transcript_path,
+        codex_transcript_offset=codex_transcript_offset,
+        codex_turn_completed=codex_turn_completed,
+    )
     try:
-        await process.stdin.drain()
-        process.stdin.close()
-        await process.stdin.wait_closed()
+        stopped_after_turn = await _wait_for_turn_or_process_exit(
+            process, tasks, codex_turn_completed
+        )
+        return await tasks.stdout, await tasks.stderr, stopped_after_turn
+    finally:
+        await _cancel_remaining_tasks(tasks.all())
+
+
+async def _send_and_close_stdin(stdin: asyncio.StreamWriter, message: str) -> None:
+    stdin.write(message.encode("utf-8"))
+    try:
+        await stdin.drain()
+        stdin.close()
+        await stdin.wait_closed()
     except (BrokenPipeError, ConnectionResetError):
         pass
-    codex_turn_completed = asyncio.Event()
+
+
+def _start_streaming_tasks(
+    process: asyncio.subprocess.Process,
+    *,
+    codex_reply_observer: Callable[[str], Awaitable[None]] | None,
+    stop_after_codex_turn: bool,
+    codex_transcript_path: Path | None,
+    codex_transcript_offset: int | None,
+    codex_turn_completed: asyncio.Event,
+) -> _StreamingTasks:
     stdout_task = asyncio.create_task(
         _read_bounded_stream(
             process.stdout,
@@ -535,58 +606,42 @@ async def _communicate_streaming(
                 turn_completed=codex_turn_completed,
             )
         )
-    process_task = asyncio.create_task(process.wait())
-    completion_task = asyncio.create_task(codex_turn_completed.wait())
-    try:
-        completion_sources: set[asyncio.Task[object]] = {
-            process_task,
-            completion_task,
-        }
-        if transcript_task is not None:
-            completion_sources.add(transcript_task)
-        await asyncio.wait(
-            completion_sources,
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-        if (
-            transcript_task is not None
-            and transcript_task.done()
-            and not codex_turn_completed.is_set()
-        ):
-            await transcript_task
-        stopped_after_turn = completion_task.done() and completion_task.result()
-        if stopped_after_turn and process.returncode is None:
-            _kill_process_group(process.pid)
-        await process_task
-        stdout = await stdout_task
-        stderr = await stderr_task
-        return stdout, stderr, stopped_after_turn
-    finally:
-        for task in (
-            stdout_task,
-            stderr_task,
-            transcript_task,
-            process_task,
-            completion_task,
-        ):
-            if task is None:
-                continue
-            if not task.done():
-                task.cancel()
-        await asyncio.gather(
-            *(
-                task
-                for task in (
-                    stdout_task,
-                    stderr_task,
-                    transcript_task,
-                    process_task,
-                    completion_task,
-                )
-                if task is not None
-            ),
-            return_exceptions=True,
-        )
+    return _StreamingTasks(
+        stdout=stdout_task,
+        stderr=stderr_task,
+        process=asyncio.create_task(process.wait()),
+        completion=asyncio.create_task(codex_turn_completed.wait()),
+        transcript=transcript_task,
+    )
+
+
+async def _wait_for_turn_or_process_exit(
+    process: asyncio.subprocess.Process,
+    tasks: _StreamingTasks,
+    codex_turn_completed: asyncio.Event,
+) -> bool:
+    completion_sources: set[asyncio.Task[object]] = {tasks.process, tasks.completion}
+    if tasks.transcript is not None:
+        completion_sources.add(tasks.transcript)
+    await asyncio.wait(completion_sources, return_when=asyncio.FIRST_COMPLETED)
+    if (
+        tasks.transcript is not None
+        and tasks.transcript.done()
+        and not codex_turn_completed.is_set()
+    ):
+        await tasks.transcript
+    stopped_after_turn = tasks.completion.done() and tasks.completion.result()
+    if stopped_after_turn and process.returncode is None:
+        _kill_process_group(process.pid)
+    await tasks.process
+    return stopped_after_turn
+
+
+async def _cancel_remaining_tasks(tasks: tuple[asyncio.Task, ...]) -> None:
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _watch_codex_transcript(
@@ -596,9 +651,15 @@ async def _watch_codex_transcript(
     reply_observer: Callable[[str], Awaitable[None]] | None,
     turn_completed: asyncio.Event,
 ) -> None:
-    """Deliver one resumed Codex turn even when a persistent goal auto-continues."""
+    """Deliver one resumed Codex turn even when a persistent goal auto-continues.
+
+    Only the initial ``open`` runs off the event loop thread: the polling reads
+    that follow already yield to other tasks via ``asyncio.sleep`` whenever no
+    full line is available, so they do not need their own thread hop.
+    """
     try:
-        with transcript_path.open("rb") as stream:
+        stream = await asyncio.to_thread(transcript_path.open, "rb")
+        try:
             stream.seek(start_offset)
             while not turn_completed.is_set():
                 line_offset = stream.tell()
@@ -619,6 +680,8 @@ async def _watch_codex_transcript(
                 if is_final:
                     turn_completed.set()
                     return
+        finally:
+            stream.close()
     except OSError as exc:
         raise BridgeError("Das Codex-Sessionprotokoll wurde unlesbar.") from exc
 

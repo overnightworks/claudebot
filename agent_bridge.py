@@ -104,7 +104,9 @@ def discover_sessions(
         root = claude_root or Path.home() / ".claude" / "projects"
         records = _discover_claude_sessions(root)
 
-    expected = working_directory.resolve()
+    expected = _resolved_path(working_directory)
+    if expected is None:
+        return []
     matching = [
         record
         for record in records
@@ -113,14 +115,21 @@ def discover_sessions(
     return sorted(matching, key=lambda record: record.modified_at, reverse=True)
 
 
-def _same_path(left: Path, right: Path) -> bool:
+def _resolved_path(path: Path) -> Path | None:
+    """Return the resolved path, or None when the system cannot resolve it."""
     try:
-        return left.resolve() == right.resolve()
-    # A path that cannot be resolved is not the path we mean: resolution fails
-    # for a vanished working directory, and Python 3.12 additionally reports a
-    # symlink loop as RuntimeError where later versions resolve it lexically.
+        return path.resolve()
+    # Resolution fails for a vanished working directory, and Python 3.12
+    # additionally reports a symlink loop as RuntimeError where later versions
+    # resolve it lexically.
     except (OSError, RuntimeError):
-        return False
+        return None
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    resolved_left = _resolved_path(left)
+    # A path that cannot be resolved is not the path we mean.
+    return resolved_left is not None and resolved_left == _resolved_path(right)
 
 
 def _discover_codex_sessions(root: Path) -> Iterable[SessionRecord]:
@@ -219,7 +228,7 @@ def session_is_active(
     lifetime, so descriptor ownership alone misses a still-running ``resume``.
     The exact session id in a Codex process argv is the second independent proof.
     """
-    expected = record.transcript_path.resolve()
+    expected = _resolved_path(record.transcript_path)
     try:
         # Listing eagerly keeps a missing or unreadable proc root inside this
         # guard: Python 3.12's iterdir() only fails once it is iterated.
@@ -236,25 +245,30 @@ def session_is_active(
 def _process_owns_session(
     process_directory: Path,
     record: SessionRecord,
-    expected_transcript: Path,
+    expected_transcript: Path | None,
     ignored_process_groups: AbstractSet[int],
 ) -> bool:
     if _process_group_id(process_directory) in ignored_process_groups:
         return False
     if _process_runs_session(process_directory, record):
         return True
-    return _process_has_transcript_open(process_directory, expected_transcript)
+    # A transcript path that cannot be resolved leaves the argv proof standing
+    # rather than reporting the session as inactive.
+    return expected_transcript is not None and _process_has_transcript_open(
+        process_directory, expected_transcript
+    )
 
 
 def _process_has_transcript_open(process_directory: Path, expected: Path) -> bool:
     descriptor_directory = process_directory / "fd"
     try:
-        return any(
-            descriptor.resolve() == expected
-            for descriptor in descriptor_directory.iterdir()
-        )
+        # Listing eagerly keeps the failing directory inside this guard, as in
+        # session_is_active; a single descriptor that cannot be resolved is
+        # merely not the transcript, so the remaining descriptors still count.
+        descriptors = list(descriptor_directory.iterdir())
     except OSError:
         return False
+    return any(_resolved_path(descriptor) == expected for descriptor in descriptors)
 
 
 def _process_group_id(process_directory: Path) -> int | None:

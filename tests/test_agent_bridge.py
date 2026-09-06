@@ -710,6 +710,31 @@ class DiscoveryEdgeCaseTests(unittest.TestCase):
                 vanishing.rmdir()
                 self.assertFalse(_same_path(Path("project"), root))
 
+    def test_a_working_directory_that_cannot_be_resolved_finds_no_sessions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            vanishing = root / "vanishing"
+            vanishing.mkdir()
+            (root / "rollout-root.jsonl").write_text(
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": SESSION_ID,
+                            "cwd": str(vanishing),
+                            "source": "cli",
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with contextlib.chdir(vanishing):
+                vanishing.rmdir()
+                self.assertEqual(
+                    discover_sessions(Provider.CODEX, Path("."), codex_root=root), []
+                )
+
 
 class SessionActiveEdgeCaseTests(unittest.TestCase):
     def _record(self, root: Path) -> SessionRecord:
@@ -727,6 +752,16 @@ class SessionActiveEdgeCaseTests(unittest.TestCase):
             encoding="utf-8",
         )
         return discover_sessions(Provider.CODEX, project, codex_root=root)[0]
+
+    def _unresolvable_transcript_record(self, root: Path) -> SessionRecord:
+        """A record whose relative transcript path resolves only from a live cwd."""
+        return SessionRecord(
+            provider=Provider.CODEX,
+            session_id=SESSION_ID,
+            working_directory=root / "project",
+            modified_at=0.0,
+            transcript_path=Path("rollout-root.jsonl"),
+        )
 
     def test_nonexistent_proc_root_is_not_active(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -770,6 +805,45 @@ class SessionActiveEdgeCaseTests(unittest.TestCase):
             (process_directory / "cmdline").write_bytes(b"bash\0")
             (process_directory / "fd" / "3").symlink_to(other_file)
             self.assertFalse(session_is_active(record, root / "proc"))
+
+    def test_a_descriptor_that_cannot_be_resolved_does_not_match(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            record = self._record(root)
+            process_directory = root / "proc" / "42"
+            (process_directory / "fd").mkdir(parents=True)
+            (process_directory / "cmdline").write_bytes(b"bash\0")
+            looping = process_directory / "fd" / "3"
+            looping.symlink_to(looping)
+            self.assertFalse(session_is_active(record, root / "proc"))
+
+    def test_an_unresolvable_transcript_still_allows_the_argv_proof(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            process_directory = root / "proc" / "42"
+            (process_directory / "fd").mkdir(parents=True)
+            (process_directory / "cmdline").write_bytes(
+                b"node\0/usr/bin/codex\0resume\0" + SESSION_ID.encode() + b"\0"
+            )
+            record = self._unresolvable_transcript_record(root)
+            vanishing = root / "vanishing"
+            vanishing.mkdir()
+            with contextlib.chdir(vanishing):
+                vanishing.rmdir()
+                self.assertTrue(session_is_active(record, root / "proc"))
+
+    def test_an_unresolvable_transcript_alone_is_not_active(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            process_directory = root / "proc" / "42"
+            (process_directory / "fd").mkdir(parents=True)
+            (process_directory / "cmdline").write_bytes(b"bash\0")
+            record = self._unresolvable_transcript_record(root)
+            vanishing = root / "vanishing"
+            vanishing.mkdir()
+            with contextlib.chdir(vanishing):
+                vanishing.rmdir()
+                self.assertFalse(session_is_active(record, root / "proc"))
 
     def test_stat_without_a_command_terminator_yields_no_group(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

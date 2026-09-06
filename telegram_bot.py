@@ -594,11 +594,6 @@ async def _run_agent_task(user_id: int, message, text: str) -> None:
         reply = await _runtime().ask(text, deliver_reply)
         if not reply.delivered_during_run:
             await _send_reply(message, reply.text)
-    except asyncio.CancelledError:
-        # /stop or a provider switch cancelled this turn; the finally block
-        # below still tears down the typing indicator and task bookkeeping,
-        # but the task itself must stay cancelled for its awaiter.
-        raise
     except BridgeError as exc:
         log.warning("Agent request refused: %s", exc)
         await message.reply_text(f"⚠️ {exc}")
@@ -606,20 +601,20 @@ async def _run_agent_task(user_id: int, message, text: str) -> None:
         log.exception("Unexpected agent bridge failure")
         await message.reply_text("⚠️ Unerwarteter interner Bot-Fehler.")
     finally:
+        # A cancellation from /stop or a provider switch passes through this
+        # block untouched — `except Exception` never sees it — so the turn
+        # stays cancelled for its awaiter while the teardown below still runs.
         typing_task.cancel()
         await asyncio.gather(typing_task, return_exceptions=True)
         _runtime().active_tasks.pop(user_id, None)
 
 
 async def _keep_typing(chat) -> None:
-    try:
-        while True:
-            await chat.send_action("typing")
-            await asyncio.sleep(4)
-    except asyncio.CancelledError:
-        # Cancelled by _run_agent_task's finally block once the turn ends;
-        # this task must stay cancelled for its awaiter.
-        raise
+    # Ends only by cancellation from _run_agent_task's finally block once the
+    # turn is over, and stays cancelled for its awaiter.
+    while True:
+        await chat.send_action("typing")
+        await asyncio.sleep(4)
 
 
 async def _start_claude_remote_control() -> None:

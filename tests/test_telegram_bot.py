@@ -1061,7 +1061,7 @@ class AgentTaskLifecycleTests(HandlerTestCase):
             await _run_agent_task(ALLOWED_USER_ID, message, "hi")
         self.assertEqual(message.replies, ["⚠️ Unerwarteter interner Bot-Fehler."])
 
-    async def test_keep_typing_reraises_cancellation_after_the_indicator(self) -> None:
+    async def test_keep_typing_stops_by_cancellation_after_the_indicator(self) -> None:
         chat = FakeChat()
         real_send_action = chat.send_action
         calls = 0

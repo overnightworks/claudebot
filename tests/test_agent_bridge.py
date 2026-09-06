@@ -890,12 +890,13 @@ class TranscriptWatcherTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_transcript_file_raises_bridge_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             absent = Path(directory) / "absent.jsonl"
+            turn_completed = asyncio.Event()
             with self.assertRaises(BridgeError):
                 await _watch_codex_transcript(
                     absent,
                     start_offset=0,
                     reply_observer=None,
-                    turn_completed=asyncio.Event(),
+                    turn_completed=turn_completed,
                 )
 
     async def test_final_message_without_an_observer_still_completes_the_turn(self) -> None:

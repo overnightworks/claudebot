@@ -44,6 +44,22 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 MAX_MESSAGE_LENGTH = 16_000
 MAX_REPLY_CHUNK = 4_000
 MAX_AUDIO_BYTES = 50 * 1024 * 1024
+CLAUDE_REMOTE_CONTROL_SERVICE = "claude-remote-control.service"
+
+# POSIX NAME_MAX (Linux ext4 and friends): the longest a single path
+# component can be. Bounding the quantifier below caps how far the engine
+# ever has to backtrack from a candidate match, which keeps a long run of
+# path-shaped text linear instead of quadratic in its length; an unbounded
+# class combined with the trailing literal ".mp3"/".wav" was super-linear on
+# pathological input (measured: quadratic backtracking over embedded dots).
+_MAX_AUDIO_PATH_COMPONENT_LENGTH = 255
+
+# One flat character class over path characters (including "/") replaces the
+# former two alternatives of nested `(group)+` repetitions; `\w` already
+# covers `_`, so it is not repeated in the class.
+_AUDIO_PATH_PATTERN = re.compile(
+    rf"[\w./-]{{1,{_MAX_AUDIO_PATH_COMPONENT_LENGTH}}}\.(?:mp3|wav)"
+)
 
 SYSTEM_PROMPT = (
     "You are continuing a local coding-agent conversation with Felix via Telegram. "
@@ -465,7 +481,7 @@ async def cmd_claude_remote_stop(
     del context
     if not _authorized(update):
         return
-    await _run_systemctl("stop", "claude-remote-control.service")
+    await _run_systemctl("stop", CLAUDE_REMOTE_CONTROL_SERVICE)
     await update.effective_message.reply_text("Claude Remote Control ist gestoppt.")
 
 
@@ -579,7 +595,10 @@ async def _run_agent_task(user_id: int, message, text: str) -> None:
         if not reply.delivered_during_run:
             await _send_reply(message, reply.text)
     except asyncio.CancelledError:
-        pass
+        # /stop or a provider switch cancelled this turn; the finally block
+        # below still tears down the typing indicator and task bookkeeping,
+        # but the task itself must stay cancelled for its awaiter.
+        raise
     except BridgeError as exc:
         log.warning("Agent request refused: %s", exc)
         await message.reply_text(f"⚠️ {exc}")
@@ -598,18 +617,20 @@ async def _keep_typing(chat) -> None:
             await chat.send_action("typing")
             await asyncio.sleep(4)
     except asyncio.CancelledError:
-        pass
+        # Cancelled by _run_agent_task's finally block once the turn ends;
+        # this task must stay cancelled for its awaiter.
+        raise
 
 
 async def _start_claude_remote_control() -> None:
-    await _run_systemctl("start", "claude-remote-control.service")
+    await _run_systemctl("start", CLAUDE_REMOTE_CONTROL_SERVICE)
     for _ in range(30):
         process = await asyncio.create_subprocess_exec(
             "systemctl",
             "--user",
             "is-active",
             "--quiet",
-            "claude-remote-control.service",
+            CLAUDE_REMOTE_CONTROL_SERVICE,
         )
         if await process.wait() == 0:
             return
@@ -638,19 +659,16 @@ async def _send_reply(message, reply: str) -> None:
         await message.reply_text(reply[start : start + MAX_REPLY_CHUNK])
     for audio_path in _find_audio_files(reply, _runtime().config.project_directory):
         await message.chat.send_action("upload_document")
-        with audio_path.open("rb") as stream:
-            await message.reply_audio(
-                audio=stream,
-                title=audio_path.stem,
-                filename=audio_path.name,
-            )
+        audio_bytes = await asyncio.to_thread(audio_path.read_bytes)
+        await message.reply_audio(
+            audio=audio_bytes,
+            title=audio_path.stem,
+            filename=audio_path.name,
+        )
 
 
 def _find_audio_files(text: str, project_directory: Path) -> list[Path]:
-    matches = re.findall(
-        r"(?:/[\w._-]+)+\.(?:mp3|wav)|(?:[\w._-]+/)*[\w._-]+\.(?:mp3|wav)",
-        text,
-    )
+    matches = _AUDIO_PATH_PATTERN.findall(text)
     project = project_directory.resolve()
     found: list[Path] = []
     for raw_path in matches:
@@ -685,7 +703,7 @@ def _takeover_reply(record: SessionRecord, locally_open: bool) -> str:
     return f"Session übernommen: {record.compact_label()}.{suffix}"
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover -- wires handlers and starts polling only
     global runtime
     try:
         config = load_config()

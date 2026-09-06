@@ -470,15 +470,17 @@ class StateStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"
             path.write_text("not json", encoding="utf-8")
+            store = StateStore(path)
             with self.assertRaises(BridgeError):
-                StateStore(path).load()
+                store.load()
 
     def test_state_with_unknown_provider_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"
             path.write_text(json.dumps({"provider": "gpt", "sessions": {}}), encoding="utf-8")
+            store = StateStore(path)
             with self.assertRaises(BridgeError):
-                StateStore(path).load()
+                store.load()
 
     def test_state_with_non_dict_sessions_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -487,8 +489,9 @@ class StateStoreTests(unittest.TestCase):
                 json.dumps({"provider": "codex", "sessions": ["not", "a", "dict"]}),
                 encoding="utf-8",
             )
+            store = StateStore(path)
             with self.assertRaises(BridgeError):
-                StateStore(path).load()
+                store.load()
 
 
 class PureHelperTests(unittest.TestCase):
@@ -886,9 +889,10 @@ class StreamingHelperTests(unittest.IsolatedAsyncioTestCase):
 class TranscriptWatcherTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_transcript_file_raises_bridge_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
+            absent = Path(directory) / "absent.jsonl"
             with self.assertRaises(BridgeError):
                 await _watch_codex_transcript(
-                    Path(directory) / "absent.jsonl",
+                    absent,
                     start_offset=0,
                     reply_observer=None,
                     turn_completed=asyncio.Event(),

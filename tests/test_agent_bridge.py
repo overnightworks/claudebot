@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import os
 import sys
@@ -699,6 +700,15 @@ class DiscoveryEdgeCaseTests(unittest.TestCase):
             looping = root / "loop"
             looping.symlink_to(looping)
             self.assertFalse(_same_path(looping, root))
+
+    def test_a_path_that_cannot_be_resolved_does_not_match(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            vanishing = root / "vanishing"
+            vanishing.mkdir()
+            with contextlib.chdir(vanishing):
+                vanishing.rmdir()
+                self.assertFalse(_same_path(Path("project"), root))
 
 
 class SessionActiveEdgeCaseTests(unittest.TestCase):

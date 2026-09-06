@@ -114,10 +114,13 @@ def discover_sessions(
 
 
 def _same_path(left: Path, right: Path) -> bool:
-    # Path.resolve() defaults to strict=False, which never raises OSError:
-    # os.path.realpath swallows every lookup failure and returns its best
-    # effort instead, so there is no error path here to guard against.
-    return left.resolve() == right.resolve()
+    try:
+        return left.resolve() == right.resolve()
+    # A path that cannot be resolved is not the path we mean: resolution fails
+    # for a vanished working directory, and Python 3.12 additionally reports a
+    # symlink loop as RuntimeError where later versions resolve it lexically.
+    except (OSError, RuntimeError):
+        return False
 
 
 def _discover_codex_sessions(root: Path) -> Iterable[SessionRecord]:
@@ -218,7 +221,9 @@ def session_is_active(
     """
     expected = record.transcript_path.resolve()
     try:
-        process_directories = proc_root.iterdir()
+        # Listing eagerly keeps a missing or unreadable proc root inside this
+        # guard: Python 3.12's iterdir() only fails once it is iterated.
+        process_directories = list(proc_root.iterdir())
     except OSError:
         return False
     return any(
@@ -242,12 +247,12 @@ def _process_owns_session(
 
 
 def _process_has_transcript_open(process_directory: Path, expected: Path) -> bool:
-    # descriptor.resolve() defaults to strict=False, which never raises
-    # OSError (see _same_path); only listing the fd directory itself can fail.
     descriptor_directory = process_directory / "fd"
     try:
-        descriptors = descriptor_directory.iterdir()
-        return any(descriptor.resolve() == expected for descriptor in descriptors)
+        return any(
+            descriptor.resolve() == expected
+            for descriptor in descriptor_directory.iterdir()
+        )
     except OSError:
         return False
 

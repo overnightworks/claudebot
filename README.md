@@ -6,9 +6,9 @@ One bot, one systemd user service: `agent-telegram.service`.
 ## Run
 
 ```
-./bot_start.sh    # stdlib unittest preflight, compile check, link + enable + restart the service
-./bot_status.sh   # service status and the last 20 journal lines (token redacted)
-./bot_stop.sh     # disable and stop
+./scripts/bot_start.sh    # stdlib unittest preflight, compile check, link + enable + restart the service
+./scripts/bot_status.sh   # service status and the last 20 journal lines (token redacted)
+./scripts/bot_stop.sh     # disable and stop
 ```
 
 Telegram allows exactly one polling instance per bot token. A second
@@ -24,7 +24,7 @@ Secrets and runtime settings live outside the repo in `~/.secrets`, mode 600:
 | `~/.secrets/claudebot.env` | `TELEGRAM_BOT_TOKEN`, `CLAUDE_BIN` |
 | `~/.secrets/claudebot-runtime.env` | `TELEGRAM_ALLOWED_USER_IDS`, `AGENT_PROJECT_DIR`, `AGENT_PROVIDER`, `CODEX_MODEL`, `AGENT_TIMEOUT` |
 
-`agent-telegram.service` loads both via `EnvironmentFile`.
+`deploy/agent-telegram.service` loads both via `EnvironmentFile`.
 
 ## Bot commands
 
@@ -39,7 +39,7 @@ uv sync --locked --no-build --group dev
 ```
 
 Creates `.venv`, the same `.venv/bin/python` the systemd unit and
-`bot_start.sh` already use.
+`scripts/bot_start.sh` already use.
 
 ## Tests
 

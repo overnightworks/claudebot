@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON="$SCRIPT_DIR/.venv/bin/python"
-UNIT="$SCRIPT_DIR/agent-telegram.service"
+REPOSITORY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PYTHON="$REPOSITORY_ROOT/.venv/bin/python"
+UNIT="$REPOSITORY_ROOT/deploy/agent-telegram.service"
 
-cd "$SCRIPT_DIR"
+cd "$REPOSITORY_ROOT"
 
 umask 077
 [[ -x "$PYTHON" ]] || { echo "Missing bot interpreter: $PYTHON" >&2; exit 1; }
@@ -19,8 +19,11 @@ for config_file in "$HOME/.secrets/claudebot.env" "$HOME/.secrets/claudebot-runt
     }
 done
 
-"$PYTHON" -m unittest discover -s "$SCRIPT_DIR/tests" -q
-"$PYTHON" -m py_compile "$SCRIPT_DIR/agent_bridge.py" "$SCRIPT_DIR/telegram_bot.py"
+# The project is not installed into the virtualenv (pyproject: package =
+# false), so the tests reach the package through the path.
+PYTHONPATH="$REPOSITORY_ROOT/src" "$PYTHON" -m unittest discover -s "$REPOSITORY_ROOT/tests" -q
+"$PYTHON" -m py_compile "$REPOSITORY_ROOT/src/claudebot/agent_bridge.py" \
+    "$REPOSITORY_ROOT/src/claudebot/telegram_bot.py"
 
 systemctl --user link --force "$UNIT" >/dev/null
 systemctl --user daemon-reload

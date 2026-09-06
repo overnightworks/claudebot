@@ -16,14 +16,14 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = ["src", "scripts"]
 testpaths = ["tests"]
-addopts = "--cov=agent_bridge --cov=telegram_bot --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=100"
+addopts = "--cov=claudebot --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=100"
 
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
-    # telegram_bot.py's process entry only wires the real Telegram polling
-    # loop; it has no branching logic worth a unit test.
+    # The process entry in src/claudebot/telegram_bot.py only wires the real
+    # Telegram polling loop; it has no branching logic worth a unit test.
     "if __name__ == .__main__.:",
 ]

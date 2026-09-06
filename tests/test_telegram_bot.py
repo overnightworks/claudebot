@@ -7,8 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from agent_bridge import AgentReply, BridgeError, ControlIntent, Provider, SessionRecord
-from telegram_bot import (
+from claudebot.agent_bridge import AgentReply, BridgeError, ControlIntent, Provider, SessionRecord
+from claudebot.telegram_bot import (
     BotConfig,
     BotRuntime,
     CLAUDE_REMOTE_CONTROL_SERVICE,
@@ -107,7 +107,7 @@ class RuntimeHandoffTests(unittest.TestCase):
                         "CLAUDE_SESSION_ID": "",
                     },
                 ),
-                patch("telegram_bot.discover_sessions", return_value=[record]),
+                patch("claudebot.telegram_bot.discover_sessions", return_value=[record]),
             ):
                 runtime = BotRuntime(config)
             self.assertEqual(runtime.session_id(), SESSION_ID)
@@ -123,7 +123,7 @@ class RuntimeHandoffTests(unittest.TestCase):
                     os.environ,
                     {"AGENT_PROVIDER": "", "CODEX_SESSION_ID": "", "CLAUDE_SESSION_ID": ""},
                 ),
-                patch("telegram_bot.discover_sessions", return_value=[]),
+                patch("claudebot.telegram_bot.discover_sessions", return_value=[]),
             ):
                 runtime = BotRuntime(config)
             self.assertIsNone(runtime.session_id())
@@ -146,7 +146,7 @@ class RuntimeHandoffTests(unittest.TestCase):
                     },
                 ),
                 patch(
-                    "telegram_bot.discover_sessions",
+                    "claudebot.telegram_bot.discover_sessions",
                     side_effect=lambda provider, _project: (
                         [record] if provider is Provider.CLAUDE else []
                     ),
@@ -165,7 +165,7 @@ class RuntimeHandoffTests(unittest.TestCase):
             config = _config(project, root)
             with (
                 patch.dict(os.environ, {"CODEX_SESSION_ID": "", "CLAUDE_SESSION_ID": ""}),
-                patch("telegram_bot.discover_sessions", return_value=[]),
+                patch("claudebot.telegram_bot.discover_sessions", return_value=[]),
             ):
                 BotRuntime(config).store.save(
                     {"provider": "codex", "sessions": {"codex": SESSION_ID}}
@@ -175,7 +175,7 @@ class RuntimeHandoffTests(unittest.TestCase):
                     os.environ,
                     {"CODEX_SESSION_ID": OTHER_SESSION_ID, "CLAUDE_SESSION_ID": ""},
                 ),
-                patch("telegram_bot.discover_sessions", return_value=[]),
+                patch("claudebot.telegram_bot.discover_sessions", return_value=[]),
             ):
                 runtime = BotRuntime(config)
             self.assertEqual(runtime.session_id(Provider.CODEX), SESSION_ID)
@@ -191,7 +191,7 @@ class RuntimeHandoffTests(unittest.TestCase):
                     os.environ,
                     {"CODEX_SESSION_ID": SESSION_ID, "CLAUDE_SESSION_ID": ""},
                 ),
-                patch("telegram_bot.discover_sessions", return_value=[]),
+                patch("claudebot.telegram_bot.discover_sessions", return_value=[]),
             ):
                 runtime = BotRuntime(config)
             self.assertEqual(runtime.session_id(Provider.CODEX), SESSION_ID)
@@ -206,7 +206,7 @@ class BinaryResolutionTests(unittest.TestCase):
             binary.chmod(0o755)
             with (
                 patch.dict(os.environ, {"TEST_BIN": "/missing/codex"}),
-                patch("telegram_bot.shutil.which", return_value=str(binary)),
+                patch("claudebot.telegram_bot.shutil.which", return_value=str(binary)),
             ):
                 self.assertEqual(_resolve_binary("TEST_BIN", "codex"), str(binary))
 
@@ -220,14 +220,14 @@ class BinaryResolutionTests(unittest.TestCase):
             stable.symlink_to(target)
             with (
                 patch.dict(os.environ, {"TEST_BIN": str(stable)}),
-                patch("telegram_bot.shutil.which", return_value=None),
+                patch("claudebot.telegram_bot.shutil.which", return_value=None),
             ):
                 self.assertEqual(_resolve_binary("TEST_BIN", "codex"), str(stable))
 
     def test_no_candidate_raises(self) -> None:
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("TEST_BIN", None)
-            with patch("telegram_bot.shutil.which", return_value=None):
+            with patch("claudebot.telegram_bot.shutil.which", return_value=None):
                 with self.assertRaises(BridgeError):
                     _resolve_binary("TEST_BIN", "totally-nonexistent-claudebot-binary-xyz")
 
@@ -235,7 +235,7 @@ class BinaryResolutionTests(unittest.TestCase):
         missing = "/definitely/missing/claudebot-test-binary"
         with (
             patch.dict(os.environ, {"TEST_BIN": missing}),
-            patch("telegram_bot.shutil.which", return_value=missing),
+            patch("claudebot.telegram_bot.shutil.which", return_value=missing),
         ):
             with self.assertRaises(BridgeError):
                 _resolve_binary("TEST_BIN", "totally-nonexistent-claudebot-binary-xyz")
@@ -412,7 +412,7 @@ class AudioBoundaryTests(unittest.TestCase):
             project.mkdir()
             audio = project / "big.mp3"
             audio.write_bytes(b"x" * 10)
-            with patch("telegram_bot.MAX_AUDIO_BYTES", 1):
+            with patch("claudebot.telegram_bot.MAX_AUDIO_BYTES", 1):
                 found = _find_audio_files(str(audio), project)
             self.assertEqual(found, [])
 
@@ -454,18 +454,18 @@ class BotRuntimeMethodTests(unittest.TestCase):
         self.project = self.root / "project"
         self.project.mkdir()
         self.config = _config(self.project, self.root)
-        with patch("telegram_bot.discover_sessions", return_value=[]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[]):
             self.runtime = BotRuntime(self.config)
 
     def test_switch_provider_binds_latest_local_session(self) -> None:
         record = _record(Provider.CLAUDE, self.project, self.root)
-        with patch("telegram_bot.discover_sessions", return_value=[record]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[record]):
             bound = self.runtime.switch_provider(Provider.CLAUDE)
         self.assertEqual(bound, record)
         self.assertEqual(self.runtime.session_id(Provider.CLAUDE), SESSION_ID)
 
     def test_switch_provider_without_local_session_still_persists_choice(self) -> None:
-        with patch("telegram_bot.discover_sessions", return_value=[]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[]):
             bound = self.runtime.switch_provider(Provider.CLAUDE)
         self.assertIsNone(bound)
         self.assertEqual(self.runtime.provider, Provider.CLAUDE)
@@ -473,31 +473,31 @@ class BotRuntimeMethodTests(unittest.TestCase):
 
     def test_takeover_binds_latest_session(self) -> None:
         record = _record(Provider.CODEX, self.project, self.root)
-        with patch("telegram_bot.discover_sessions", return_value=[record]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[record]):
             bound = self.runtime.takeover()
         self.assertEqual(bound, record)
         self.assertEqual(self.runtime.session_id(), SESSION_ID)
 
     def test_takeover_without_local_session_raises(self) -> None:
-        with patch("telegram_bot.discover_sessions", return_value=[]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[]):
             with self.assertRaises(BridgeError):
                 self.runtime.takeover()
 
     def test_clear_session_removes_bound_id(self) -> None:
         record = _record(Provider.CODEX, self.project, self.root)
-        with patch("telegram_bot.discover_sessions", return_value=[record]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[record]):
             self.runtime.takeover()
         self.runtime.clear_session()
         self.assertIsNone(self.runtime.session_id())
 
     def test_bind_session_id_requires_a_known_session(self) -> None:
-        with patch("telegram_bot.discover_sessions", return_value=[]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[]):
             with self.assertRaises(BridgeError):
                 self.runtime.bind_session_id(SESSION_ID)
 
     def test_bind_session_id_binds_a_known_session(self) -> None:
         record = _record(Provider.CODEX, self.project, self.root)
-        with patch("telegram_bot.discover_sessions", return_value=[record]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[record]):
             bound = self.runtime.bind_session_id(SESSION_ID)
         self.assertEqual(bound, record)
 
@@ -506,21 +506,21 @@ class BotRuntimeMethodTests(unittest.TestCase):
 
     def test_bound_record_finds_the_matching_local_session(self) -> None:
         record = _record(Provider.CODEX, self.project, self.root)
-        with patch("telegram_bot.discover_sessions", return_value=[record]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[record]):
             self.runtime.takeover()
             self.assertEqual(self.runtime.bound_record(), record)
 
     def test_session_is_locally_active_delegates_to_agent_bridge(self) -> None:
         record = _record(Provider.CODEX, self.project, self.root)
-        with patch("telegram_bot.session_is_active", return_value=True) as mocked:
+        with patch("claudebot.telegram_bot.session_is_active", return_value=True) as mocked:
             self.assertTrue(self.runtime.session_is_locally_active(record))
         mocked.assert_called_once()
 
     def test_ask_refuses_a_locally_open_session(self) -> None:
         record = _record(Provider.CODEX, self.project, self.root)
         with (
-            patch("telegram_bot.discover_sessions", return_value=[record]),
-            patch("telegram_bot.session_is_active", return_value=True),
+            patch("claudebot.telegram_bot.discover_sessions", return_value=[record]),
+            patch("claudebot.telegram_bot.session_is_active", return_value=True),
         ):
             self.runtime.takeover()
             refused_turn = self.runtime.ask("hi")
@@ -530,7 +530,7 @@ class BotRuntimeMethodTests(unittest.TestCase):
     def test_ask_updates_the_bound_session_id(self) -> None:
         reply = AgentReply(text="hallo", session_id=OTHER_SESSION_ID, delivered_during_run=False)
         with (
-            patch("telegram_bot.discover_sessions", return_value=[]),
+            patch("claudebot.telegram_bot.discover_sessions", return_value=[]),
             patch.object(self.runtime.bridge, "ask", AsyncMock(return_value=reply)),
         ):
             result = asyncio.run(self.runtime.ask("hi"))
@@ -590,16 +590,16 @@ class HandlerTestCase(unittest.IsolatedAsyncioTestCase):
         self.project = self.root / "project"
         self.project.mkdir()
         self.config = _config(self.project, self.root)
-        with patch("telegram_bot.discover_sessions", return_value=[]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[]):
             self.runtime = BotRuntime(self.config)
-        patcher = patch("telegram_bot.runtime", self.runtime)
+        patcher = patch("claudebot.telegram_bot.runtime", self.runtime)
         patcher.start()
         self.addCleanup(patcher.stop)
 
 
 class RuntimeAccessorTests(unittest.TestCase):
     def test_uninitialized_runtime_raises(self) -> None:
-        with patch("telegram_bot.runtime", None):
+        with patch("claudebot.telegram_bot.runtime", None):
             with self.assertRaises(RuntimeError):
                 _runtime()
 
@@ -660,14 +660,14 @@ class CmdProviderTests(HandlerTestCase):
 
     async def test_switching_to_a_provider_without_a_local_session(self) -> None:
         message = FakeMessage()
-        with patch("telegram_bot.discover_sessions", return_value=[]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[]):
             await cmd_provider(FakeUpdate(message), FakeContext(["claude"]))
         self.assertIn("Claude", message.replies[0])
 
     async def test_switching_to_a_provider_binds_the_latest_session(self) -> None:
         record = _record(Provider.CLAUDE, self.project, self.root)
         message = FakeMessage()
-        with patch("telegram_bot.discover_sessions", return_value=[record]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[record]):
             await cmd_provider(FakeUpdate(message), FakeContext(["claude"]))
         self.assertIn(record.compact_label(), message.replies[0])
 
@@ -682,15 +682,15 @@ class CmdTakeoverTests(HandlerTestCase):
         record = _record(Provider.CODEX, self.project, self.root)
         message = FakeMessage()
         with (
-            patch("telegram_bot.discover_sessions", return_value=[record]),
-            patch("telegram_bot.session_is_active", return_value=False),
+            patch("claudebot.telegram_bot.discover_sessions", return_value=[record]),
+            patch("claudebot.telegram_bot.session_is_active", return_value=False),
         ):
             await cmd_takeover(FakeUpdate(message), FakeContext())
         self.assertIn(record.compact_label(), message.replies[0])
 
     async def test_takeover_without_a_local_session_reports_the_error(self) -> None:
         message = FakeMessage()
-        with patch("telegram_bot.discover_sessions", return_value=[]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[]):
             await cmd_takeover(FakeUpdate(message), FakeContext())
         self.assertTrue(message.replies[0].startswith("⚠️"))
 
@@ -712,14 +712,14 @@ class CmdNewTests(HandlerTestCase):
 class CmdSessionsTests(HandlerTestCase):
     async def test_no_local_sessions(self) -> None:
         message = FakeMessage()
-        with patch("telegram_bot.discover_sessions", return_value=[]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[]):
             await cmd_sessions(FakeUpdate(message), FakeContext())
         self.assertEqual(message.replies, ["Keine passende lokale Session gefunden."])
 
     async def test_lists_local_sessions(self) -> None:
         record = _record(Provider.CODEX, self.project, self.root)
         message = FakeMessage()
-        with patch("telegram_bot.discover_sessions", return_value=[record]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[record]):
             await cmd_sessions(FakeUpdate(message), FakeContext())
         self.assertIn(record.compact_label(), message.replies[0])
         self.assertEqual(
@@ -749,13 +749,13 @@ class CmdSessionTests(HandlerTestCase):
     async def test_selecting_by_uuid(self) -> None:
         record = _record(Provider.CODEX, self.project, self.root)
         message = FakeMessage()
-        with patch("telegram_bot.discover_sessions", return_value=[record]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[record]):
             await cmd_session(FakeUpdate(message), FakeContext([SESSION_ID]))
         self.assertIn(record.compact_label(), message.replies[0])
 
     async def test_selecting_an_unknown_uuid_reports_the_error(self) -> None:
         message = FakeMessage()
-        with patch("telegram_bot.discover_sessions", return_value=[]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[]):
             await cmd_session(FakeUpdate(message), FakeContext([SESSION_ID]))
         self.assertTrue(message.replies[0].startswith("⚠️"))
 
@@ -780,8 +780,8 @@ class CmdStatusTests(HandlerTestCase):
         record = _record(Provider.CODEX, self.project, self.root)
         message = FakeMessage()
         with (
-            patch("telegram_bot.discover_sessions", return_value=[record]),
-            patch("telegram_bot.session_is_active", return_value=True),
+            patch("claudebot.telegram_bot.discover_sessions", return_value=[record]),
+            patch("claudebot.telegram_bot.session_is_active", return_value=True),
         ):
             self.runtime.takeover()
             await cmd_status(FakeUpdate(message), FakeContext())
@@ -807,20 +807,20 @@ class CmdStopTests(HandlerTestCase):
 class CmdClaudeRemoteTests(HandlerTestCase):
     async def test_success_reports_the_remote_control_url(self) -> None:
         message = FakeMessage()
-        with patch("telegram_bot._start_claude_remote_control", AsyncMock()):
+        with patch("claudebot.telegram_bot._start_claude_remote_control", AsyncMock()):
             await cmd_claude_remote(FakeUpdate(message), FakeContext())
         self.assertIn("claude.ai/code", message.replies[0])
 
     async def test_failure_reports_the_bridge_error(self) -> None:
         message = FakeMessage()
         failure = AsyncMock(side_effect=BridgeError("nicht aktiv"))
-        with patch("telegram_bot._start_claude_remote_control", failure):
+        with patch("claudebot.telegram_bot._start_claude_remote_control", failure):
             await cmd_claude_remote(FakeUpdate(message), FakeContext())
         self.assertEqual(message.replies, ["⚠️ nicht aktiv"])
 
     async def test_stop_reports_success(self) -> None:
         message = FakeMessage()
-        with patch("telegram_bot._run_systemctl", AsyncMock()) as mocked:
+        with patch("claudebot.telegram_bot._run_systemctl", AsyncMock()) as mocked:
             await cmd_claude_remote_stop(FakeUpdate(message), FakeContext())
         mocked.assert_awaited_once_with("stop", CLAUDE_REMOTE_CONTROL_SERVICE)
         self.assertEqual(message.replies, ["Claude Remote Control ist gestoppt."])
@@ -867,7 +867,7 @@ class HandleMessageTests(HandlerTestCase):
 
     async def test_control_intent_is_delegated(self) -> None:
         message = FakeMessage(text="Wechsel zu Claude")
-        with patch("telegram_bot.discover_sessions", return_value=[]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[]):
             await handle_message(FakeUpdate(message), FakeContext())
         self.assertIn("Claude", message.replies[0])
 
@@ -884,8 +884,8 @@ class HandleMessageTests(HandlerTestCase):
         record = _record(Provider.CODEX, self.project, self.root)
         message = FakeMessage(text="Wie geht es dir?")
         with (
-            patch("telegram_bot.discover_sessions", return_value=[record]),
-            patch("telegram_bot.session_is_active", return_value=True),
+            patch("claudebot.telegram_bot.discover_sessions", return_value=[record]),
+            patch("claudebot.telegram_bot.session_is_active", return_value=True),
         ):
             self.runtime.takeover()
             await handle_message(FakeUpdate(message), FakeContext())
@@ -895,7 +895,7 @@ class HandleMessageTests(HandlerTestCase):
         message = FakeMessage(text="Wie geht es dir?")
         reply = AgentReply(text="Gut, danke!", session_id=SESSION_ID, delivered_during_run=False)
         with (
-            patch("telegram_bot.discover_sessions", return_value=[]),
+            patch("claudebot.telegram_bot.discover_sessions", return_value=[]),
             patch.object(self.runtime, "ask", AsyncMock(return_value=reply)),
         ):
             await handle_message(FakeUpdate(message), FakeContext())
@@ -909,7 +909,7 @@ class HandleMessageTests(HandlerTestCase):
 class ControlIntentHandlingTests(HandlerTestCase):
     async def test_switch_action_binds_the_provider(self) -> None:
         message = FakeMessage()
-        with patch("telegram_bot.discover_sessions", return_value=[]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[]):
             await _handle_control_intent(message, ControlIntent("switch", Provider.CLAUDE))
         self.assertIn("Claude", message.replies[0])
 
@@ -917,8 +917,8 @@ class ControlIntentHandlingTests(HandlerTestCase):
         record = _record(Provider.CODEX, self.project, self.root)
         message = FakeMessage()
         with (
-            patch("telegram_bot.discover_sessions", return_value=[record]),
-            patch("telegram_bot.session_is_active", return_value=False),
+            patch("claudebot.telegram_bot.discover_sessions", return_value=[record]),
+            patch("claudebot.telegram_bot.session_is_active", return_value=False),
         ):
             await _handle_control_intent(message, ControlIntent("takeover"))
         self.assertIn(record.compact_label(), message.replies[0])
@@ -932,13 +932,13 @@ class ControlIntentHandlingTests(HandlerTestCase):
 
     async def test_claude_remote_action_reports_success(self) -> None:
         message = FakeMessage()
-        with patch("telegram_bot._start_claude_remote_control", AsyncMock()):
+        with patch("claudebot.telegram_bot._start_claude_remote_control", AsyncMock()):
             await _handle_control_intent(message, ControlIntent("claude_remote"))
         self.assertIn("claude.ai/code", message.replies[0])
 
     async def test_bridge_error_is_reported(self) -> None:
         message = FakeMessage()
-        with patch("telegram_bot.discover_sessions", return_value=[]):
+        with patch("claudebot.telegram_bot.discover_sessions", return_value=[]):
             await _handle_control_intent(message, ControlIntent("takeover"))
         self.assertTrue(message.replies[0].startswith("⚠️"))
 
@@ -1053,7 +1053,7 @@ class SystemctlTests(HandlerTestCase):
         process.communicate = AsyncMock(return_value=(b"", b""))
         process.returncode = 0
         spawn = AsyncMock(return_value=process)
-        with patch("telegram_bot.asyncio.create_subprocess_exec", spawn):
+        with patch("claudebot.telegram_bot.asyncio.create_subprocess_exec", spawn):
             await _run_systemctl("start", CLAUDE_REMOTE_CONTROL_SERVICE)
         self.assertEqual(
             spawn.await_args.args,
@@ -1065,7 +1065,7 @@ class SystemctlTests(HandlerTestCase):
         process.communicate = AsyncMock(return_value=(b"", b"unit not found " * 40))
         process.returncode = 1
         with patch(
-            "telegram_bot.asyncio.create_subprocess_exec", AsyncMock(return_value=process)
+            "claudebot.telegram_bot.asyncio.create_subprocess_exec", AsyncMock(return_value=process)
         ):
             with self.assertRaises(BridgeError) as caught:
                 await _run_systemctl("start", CLAUDE_REMOTE_CONTROL_SERVICE)
@@ -1078,8 +1078,8 @@ class SystemctlTests(HandlerTestCase):
         probe.wait = AsyncMock(return_value=0)
         spawn = AsyncMock(return_value=probe)
         with (
-            patch("telegram_bot._run_systemctl", AsyncMock()),
-            patch("telegram_bot.asyncio.create_subprocess_exec", spawn),
+            patch("claudebot.telegram_bot._run_systemctl", AsyncMock()),
+            patch("claudebot.telegram_bot.asyncio.create_subprocess_exec", spawn),
         ):
             await _start_claude_remote_control()
         self.assertEqual(
@@ -1097,11 +1097,11 @@ class SystemctlTests(HandlerTestCase):
         probe = AsyncMock()
         probe.wait = AsyncMock(return_value=1)
         with (
-            patch("telegram_bot._run_systemctl", AsyncMock()),
+            patch("claudebot.telegram_bot._run_systemctl", AsyncMock()),
             patch(
-                "telegram_bot.asyncio.create_subprocess_exec", AsyncMock(return_value=probe)
+                "claudebot.telegram_bot.asyncio.create_subprocess_exec", AsyncMock(return_value=probe)
             ),
-            patch("telegram_bot.asyncio.sleep", AsyncMock()),
+            patch("claudebot.telegram_bot.asyncio.sleep", AsyncMock()),
         ):
             with self.assertRaises(BridgeError):
                 await _start_claude_remote_control()

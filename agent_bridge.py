@@ -557,8 +557,6 @@ async def _communicate_streaming(
     codex_transcript_path: Path | None,
     codex_transcript_offset: int | None,
 ) -> tuple[bytes, bytes, bool]:
-    if process.stdin is None or process.stdout is None or process.stderr is None:
-        raise BridgeError("Der Agent-Prozess besitzt keine vollständigen Datenkanäle.")
     await _send_and_close_stdin(process.stdin, message)
     codex_turn_completed = asyncio.Event()
     tasks = _start_streaming_tasks(

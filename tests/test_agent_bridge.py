@@ -24,7 +24,6 @@ from agent_bridge import (
     _codex_thread_id,
     _codex_transcript_agent_message,
     _codex_turn_is_completed,
-    _communicate_streaming,
     _kill_process_group,
     _process_group_id,
     _read_bounded_stream,
@@ -861,8 +860,11 @@ class SessionActiveEdgeCaseTests(unittest.TestCase):
 class StreamingHelperTests(unittest.IsolatedAsyncioTestCase):
     async def test_stdin_write_survives_a_broken_pipe(self) -> None:
         class _AlreadyClosedStdin:
+            def __init__(self) -> None:
+                self.written = b""
+
             def write(self, data: bytes) -> None:
-                pass
+                self.written += data
 
             async def drain(self) -> None:
                 raise BrokenPipeError()
@@ -873,23 +875,9 @@ class StreamingHelperTests(unittest.IsolatedAsyncioTestCase):
             async def wait_closed(self) -> None:
                 pass
 
-        await _send_and_close_stdin(_AlreadyClosedStdin(), "message")
-
-    async def test_communicate_streaming_requires_all_three_pipes(self) -> None:
-        class _IncompleteProcess:
-            stdin = None
-            stdout = object()
-            stderr = object()
-
-        with self.assertRaises(BridgeError):
-            await _communicate_streaming(
-                _IncompleteProcess(),
-                "message",
-                codex_reply_observer=None,
-                stop_after_codex_turn=False,
-                codex_transcript_path=None,
-                codex_transcript_offset=None,
-            )
+        stdin = _AlreadyClosedStdin()
+        await _send_and_close_stdin(stdin, "message")
+        self.assertEqual(stdin.written, b"message")
 
     async def test_bounded_stream_raises_once_the_limit_is_exceeded(self) -> None:
         reader = asyncio.StreamReader()

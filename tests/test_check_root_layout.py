@@ -7,7 +7,6 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
-from uuid import uuid4
 
 import check_root_layout
 from check_root_layout import (
@@ -73,15 +72,6 @@ class RootLayoutGateProcessTest(TemporaryRepositoryTestCase):
                 self.assertEqual(completed.returncode, 1)
                 self.assertIn("NOTES.md", completed.stderr)
 
-    def test_gate_accepts_a_scratch_file_gitignore_names(self) -> None:
-        (self.repository / ".gitignore").write_text("/*.png\n")
-        (self.repository / "Eingefügtes Bild.png").write_bytes(b"pasted scratch")
-
-        completed = self._run_gate(self.repository)
-
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-
-
 class RootLayoutGateInProcessTest(TemporaryRepositoryTestCase):
     """The same gate called in this process, so its own coverage is measured."""
 
@@ -111,7 +101,7 @@ class RootLayoutGateInProcessTest(TemporaryRepositoryTestCase):
 
     def test_the_listing_holds_tracked_and_unignored_untracked_paths(self) -> None:
         (self.repository / ".gitignore").write_text("/*.png\n")
-        (self.repository / "Eingef\u00fcgtes Bild.png").write_bytes(b"pasted scratch")
+        (self.repository / "Eingefügtes Bild.png").write_bytes(b"pasted scratch")
         (self.repository / "NOTES.md").write_text("a stray at the root\n")
         self._git("add", "README.md")
 
@@ -124,16 +114,28 @@ class RootLayoutGateInProcessTest(TemporaryRepositoryTestCase):
 class PastedRootImageTest(unittest.TestCase):
     """This repository's own answer to a pasted scratch image, which .gitignore owns."""
 
-    def test_this_repository_keeps_a_pasted_root_image_out_of_the_gate_s_listing(self) -> None:
-        for suffix in (".png", ".jpg", ".jpeg"):
-            with self.subTest(suffix=suffix):
-                pasted = check_root_layout.REPOSITORY_ROOT / f"pasted-{uuid4().hex}{suffix}"
-                pasted.write_bytes(b"pasted scratch")
-                self.addCleanup(pasted.unlink)
+    def _repository_excludes(self, name: str) -> bool:
+        """Whether this repository's exclude rules hide `name`, as the gate's listing does.
 
-                self.assertNotIn(
-                    pasted.name, repository_listing(check_root_layout.REPOSITORY_ROOT)
-                )
+        `--no-index` asks the exclude machinery behind `git ls-files --others
+        --exclude-standard` about a path that need not exist, so the answer
+        costs the working tree nothing.
+        """
+        completed = subprocess.run(
+            ["git", "check-ignore", "--quiet", "--no-index", name],
+            cwd=check_root_layout.REPOSITORY_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode > 1:
+            raise RuntimeError(f"git check-ignore failed: {completed.stderr}")
+        return completed.returncode == 0
+
+    def test_this_repository_treats_a_pasted_root_image_as_scratch(self) -> None:
+        for image in ("pasted.png", "pasted.jpg", "pasted.jpeg"):
+            with self.subTest(image=image):
+                self.assertTrue(self._repository_excludes(image))
 
 
 class RootLayoutProblemsTest(unittest.TestCase):

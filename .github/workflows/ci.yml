@@ -42,6 +42,12 @@ jobs:
     env:
       SONAR_ENABLED: ${{ secrets.SONAR_TOKEN != '' }}
     steps:
+      # Unguarded: a green sonar job must visibly say whether it actually
+      # scanned or deliberately skipped, not just "green because every step
+      # was conditioned away".
+      - name: Report skip when no SONAR_TOKEN is configured
+        if: ${{ env.SONAR_ENABLED != 'true' }}
+        run: "echo '::notice::SonarCloud scan skipped: no SONAR_TOKEN configured'"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         if: ${{ env.SONAR_ENABLED == 'true' }}
         with:

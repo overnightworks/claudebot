@@ -1,3 +1,14 @@
+[project]
+name = "claudebot"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "python-telegram-bot>=22,<23",
+]
+
+[tool.uv]
+package = false
+
 [dependency-groups]
 dev = [
     "pytest>=8",

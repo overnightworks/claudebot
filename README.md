@@ -32,12 +32,21 @@ Secrets and runtime settings live outside the repo in `~/.secrets`, mode 600:
 `/session`, `/status`, `/stop`, `/claude_remote`, `/claude_remote_stop`,
 `/player`. Any other message is forwarded to the active agent session.
 
+## Install
+
+```
+uv sync --locked --no-build --group dev
+```
+
+Creates `.venv`, the same `.venv/bin/python` the systemd unit and
+`bot_start.sh` already use.
+
 ## Tests
 
 ```
-.venv/bin/python -m unittest discover -s tests -q
+.venv/bin/python -m pytest
 ```
 
-CI instead runs `.venv/bin/python -m pytest` with branch coverage and
-uploads the resulting `coverage.xml` to SonarCloud. A "SonarCloud open
-findings" step then fails the build on any open finding in scope.
+CI runs the same command with branch coverage and uploads the resulting
+`coverage.xml` to SonarCloud. A "SonarCloud open findings" step then fails
+the build on any open finding in scope.

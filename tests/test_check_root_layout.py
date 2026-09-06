@@ -88,6 +88,11 @@ class RootLayoutProblemsTest(unittest.TestCase):
 
         self.assertEqual(root_layout_problems(listing, REPOSITORY_ALLOWLIST), ())
 
+    def test_the_entry_documents_and_the_licence_are_legitimate_root_files(self) -> None:
+        listing = ["README.md", "AGENTS.md", "CLAUDE.md", "HEART.md", "LICENSE"]
+
+        self.assertEqual(root_layout_problems(listing, REPOSITORY_ALLOWLIST), ())
+
     def test_stray_root_file_carries_the_sentence_where_it_belongs(self) -> None:
         strays = [
             ("telegram_bot.py", HOME_BY_SUFFIX[".py"]),

@@ -47,6 +47,9 @@ Creates `.venv`, the same `.venv/bin/python` the systemd unit and
 .venv/bin/python -m pytest
 ```
 
+`scripts/check_root_layout.py` is the gate CI runs before them: the repository
+root holds only what AGENTS.md, "Repository layout", allows.
+
 CI runs the same command with branch coverage and keeps the resulting
 `coverage.xml` as an artifact. Once `SONAR_TOKEN` is configured, the sonar
 job arms itself: it uploads that coverage and a "SonarCloud open findings"

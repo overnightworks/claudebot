@@ -20,8 +20,8 @@ for config_file in "$HOME/.secrets/claudebot.env" "$HOME/.secrets/claudebot-runt
 done
 
 # The project is not installed into the virtualenv (pyproject: package =
-# false), so the tests reach the package through the path.
-PYTHONPATH="$REPOSITORY_ROOT/src" "$PYTHON" -m unittest discover -s "$REPOSITORY_ROOT/tests" -q
+# false), so the tests reach the package and the gate through the path.
+PYTHONPATH="$REPOSITORY_ROOT/src:$REPOSITORY_ROOT/scripts" "$PYTHON" -m unittest discover -s "$REPOSITORY_ROOT/tests" -q
 "$PYTHON" -m py_compile "$REPOSITORY_ROOT/src/claudebot/agent_bridge.py" \
     "$REPOSITORY_ROOT/src/claudebot/telegram_bot.py"
 

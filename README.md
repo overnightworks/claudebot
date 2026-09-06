@@ -6,7 +6,7 @@ One bot, one systemd user service: `agent-telegram.service`.
 ## Run
 
 ```
-./bot_start.sh    # tests, compile check, link + enable + restart the service
+./bot_start.sh    # stdlib unittest preflight, compile check, link + enable + restart the service
 ./bot_status.sh   # service status and the last 20 journal lines (token redacted)
 ./bot_stop.sh     # disable and stop
 ```

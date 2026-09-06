@@ -25,9 +25,13 @@ PYTHONPATH="$REPOSITORY_ROOT/src:$REPOSITORY_ROOT/scripts" "$PYTHON" -m unittest
 "$PYTHON" -m py_compile "$REPOSITORY_ROOT/src/claudebot/agent_bridge.py" \
     "$REPOSITORY_ROOT/src/claudebot/telegram_bot.py"
 
+# Both links are forced: after the unit file moves, the stale symlinks in
+# ~/.config/systemd/user and its default.target.wants still point at the old
+# path, and an unforced link or enable aborts on the conflict -- under `set -e`
+# before the restart, leaving the live bot on a unit file that no longer exists.
 systemctl --user link --force "$UNIT" >/dev/null
+systemctl --user enable --force agent-telegram.service >/dev/null
 systemctl --user daemon-reload
-systemctl --user enable agent-telegram.service >/dev/null
 systemctl --user restart agent-telegram.service
 
 for _ in {1..40}; do

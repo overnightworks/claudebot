@@ -7,11 +7,14 @@ StartLimitBurst=6
 
 [Service]
 Type=simple
-WorkingDirectory=/home/felix-hummert/git/claudebot
-EnvironmentFile=/home/felix-hummert/.secrets/claudebot.env
-EnvironmentFile=/home/felix-hummert/.secrets/claudebot-runtime.env
+WorkingDirectory=%h/git/claudebot
+EnvironmentFile=%h/.secrets/claudebot.env
+EnvironmentFile=%h/.secrets/claudebot-runtime.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/felix-hummert/git/claudebot/.venv/bin/python /home/felix-hummert/git/claudebot/telegram_bot.py
+# The project is not installed into the virtualenv (pyproject: package =
+# false), so the package directory reaches the interpreter through the path.
+Environment=PYTHONPATH=%h/git/claudebot/src
+ExecStart=%h/git/claudebot/.venv/bin/python -m claudebot.telegram_bot
 Restart=always
 RestartSec=5
 TimeoutStopSec=20

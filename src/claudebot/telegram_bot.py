@@ -20,7 +20,7 @@ from telegram.ext import (
     filters,
 )
 
-from agent_bridge import (
+from claudebot.agent_bridge import (
     AgentBridge,
     BridgeError,
     ControlIntent,

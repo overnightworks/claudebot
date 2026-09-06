@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent_bridge import (
+from claudebot.agent_bridge import (
     AgentBridge,
     BridgeError,
     Provider,

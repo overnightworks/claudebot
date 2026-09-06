@@ -265,6 +265,8 @@ class CodexStreamingTests(unittest.IsolatedAsyncioTestCase):
                 )
             )
         )
+
+    def test_only_a_completed_turn_event_ends_the_turn(self) -> None:
         self.assertTrue(
             _codex_turn_is_completed(json.dumps({"type": "turn.completed"}).encode())
         )
@@ -554,46 +556,35 @@ class PureHelperTests(unittest.TestCase):
         self.assertNotIn("--resume", command)
 
     def test_codex_transcript_message_rejects_non_agent_events(self) -> None:
-        self.assertIsNone(_codex_transcript_agent_message(b"not json"))
-        self.assertIsNone(
-            _codex_transcript_agent_message(json.dumps({"type": "turn.started"}).encode())
-        )
-        self.assertIsNone(
-            _codex_transcript_agent_message(
-                json.dumps({"type": "event_msg", "payload": "not-a-dict"}).encode()
-            )
-        )
-        self.assertIsNone(
-            _codex_transcript_agent_message(
-                json.dumps(
-                    {"type": "event_msg", "payload": {"type": "command_execution"}}
-                ).encode()
-            )
-        )
-        self.assertIsNone(
-            _codex_transcript_agent_message(
-                json.dumps(
-                    {
-                        "type": "event_msg",
-                        "payload": {"type": "agent_message", "phase": "unknown"},
-                    }
-                ).encode()
-            )
-        )
-        self.assertIsNone(
-            _codex_transcript_agent_message(
-                json.dumps(
-                    {
-                        "type": "event_msg",
-                        "payload": {
-                            "type": "agent_message",
-                            "phase": "final_answer",
-                            "message": "   ",
-                        },
-                    }
-                ).encode()
-            )
-        )
+        rejected_payloads = {
+            "unparsable line": b"not json",
+            "other event type": json.dumps({"type": "turn.started"}).encode(),
+            "payload that is not an object": json.dumps(
+                {"type": "event_msg", "payload": "not-a-dict"}
+            ).encode(),
+            "non-agent payload type": json.dumps(
+                {"type": "event_msg", "payload": {"type": "command_execution"}}
+            ).encode(),
+            "unknown phase": json.dumps(
+                {
+                    "type": "event_msg",
+                    "payload": {"type": "agent_message", "phase": "unknown"},
+                }
+            ).encode(),
+            "blank message": json.dumps(
+                {
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "agent_message",
+                        "phase": "final_answer",
+                        "message": "   ",
+                    },
+                }
+            ).encode(),
+        }
+        for description, line in rejected_payloads.items():
+            with self.subTest(payload=description):
+                self.assertIsNone(_codex_transcript_agent_message(line))
 
     def test_codex_turn_completed_check_rejects_invalid_json(self) -> None:
         self.assertFalse(_codex_turn_is_completed(b"not json"))
@@ -995,14 +986,14 @@ class TranscriptWatcherTests(unittest.IsolatedAsyncioTestCase):
                     codex_binary=_write_executable(
                         working_directory,
                         "fake-codex",
-                        "import sys, time\nsys.stdin.read()\ntime.sleep(5)\n",
+                        "import sys, time\nsys.stdin.read()\ntime.sleep(60)\n",
                     ),
                     claude_model="opus",
                     codex_model=None,
                     timeout_seconds=5,
                     system_prompt="mobile",
                 )
-                with self.assertRaises(BridgeError):
+                with self.assertRaisesRegex(BridgeError, "wurde unlesbar"):
                     await bridge.ask(
                         Provider.CODEX,
                         "message",
@@ -1196,15 +1187,13 @@ class AskEndToEndTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(BridgeError):
                 await bridge.ask(Provider.CODEX, "Hallo", None)
 
-    async def test_ask_codex_rejects_an_unreadable_transcript_path(self) -> None:
+    async def test_ask_codex_rejects_a_missing_transcript_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             bridge = self._bridge(Path(directory), codex_body=CODEX_RESUME_BODY)
-            with self.assertRaises(BridgeError):
+            absent = Path(directory) / "absent.jsonl"
+            with self.assertRaisesRegex(BridgeError, "nicht lesbar"):
                 await bridge.ask(
-                    Provider.CODEX,
-                    "Hallo",
-                    SESSION_ID,
-                    codex_transcript_path=Path(directory) / "absent.jsonl",
+                    Provider.CODEX, "Hallo", SESSION_ID, codex_transcript_path=absent
                 )
 
     async def test_ask_propagates_a_failing_reply_observer(self) -> None:

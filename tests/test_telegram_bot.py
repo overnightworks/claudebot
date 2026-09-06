@@ -11,6 +11,7 @@ from agent_bridge import AgentReply, BridgeError, ControlIntent, Provider, Sessi
 from telegram_bot import (
     BotConfig,
     BotRuntime,
+    CLAUDE_REMOTE_CONTROL_SERVICE,
     MAX_REPLY_CHUNK,
     _authorized,
     _cancel_active_task,
@@ -820,7 +821,7 @@ class CmdClaudeRemoteTests(HandlerTestCase):
         message = FakeMessage()
         with patch("telegram_bot._run_systemctl", AsyncMock()) as mocked:
             await cmd_claude_remote_stop(FakeUpdate(message), FakeContext())
-        mocked.assert_awaited_once_with("stop", "claude-remote-control.service")
+        mocked.assert_awaited_once_with("stop", CLAUDE_REMOTE_CONTROL_SERVICE)
         self.assertEqual(message.replies, ["Claude Remote Control ist gestoppt."])
 
 
@@ -1046,14 +1047,17 @@ class AgentTaskLifecycleTests(HandlerTestCase):
 
 
 class SystemctlTests(HandlerTestCase):
-    async def test_run_systemctl_success(self) -> None:
+    async def test_run_systemctl_acts_on_the_unit_in_the_user_scope(self) -> None:
         process = AsyncMock()
         process.communicate = AsyncMock(return_value=(b"", b""))
         process.returncode = 0
-        with patch(
-            "telegram_bot.asyncio.create_subprocess_exec", AsyncMock(return_value=process)
-        ):
-            await _run_systemctl("start", "claude-remote-control.service")
+        spawn = AsyncMock(return_value=process)
+        with patch("telegram_bot.asyncio.create_subprocess_exec", spawn):
+            await _run_systemctl("start", CLAUDE_REMOTE_CONTROL_SERVICE)
+        self.assertEqual(
+            spawn.await_args.args,
+            ("systemctl", "--user", "start", CLAUDE_REMOTE_CONTROL_SERVICE),
+        )
 
     async def test_run_systemctl_failure_raises_with_a_bounded_message(self) -> None:
         process = AsyncMock()
@@ -1063,19 +1067,30 @@ class SystemctlTests(HandlerTestCase):
             "telegram_bot.asyncio.create_subprocess_exec", AsyncMock(return_value=process)
         ):
             with self.assertRaises(BridgeError) as caught:
-                await _run_systemctl("start", "claude-remote-control.service")
+                await _run_systemctl("start", CLAUDE_REMOTE_CONTROL_SERVICE)
         self.assertLessEqual(len(str(caught.exception)), 350)
 
-    async def test_start_claude_remote_control_succeeds_on_first_probe(self) -> None:
+    async def test_start_claude_remote_control_probes_the_unit_until_it_is_active(
+        self,
+    ) -> None:
         probe = AsyncMock()
         probe.wait = AsyncMock(return_value=0)
+        spawn = AsyncMock(return_value=probe)
         with (
             patch("telegram_bot._run_systemctl", AsyncMock()),
-            patch(
-                "telegram_bot.asyncio.create_subprocess_exec", AsyncMock(return_value=probe)
-            ),
+            patch("telegram_bot.asyncio.create_subprocess_exec", spawn),
         ):
             await _start_claude_remote_control()
+        self.assertEqual(
+            spawn.await_args.args,
+            (
+                "systemctl",
+                "--user",
+                "is-active",
+                "--quiet",
+                CLAUDE_REMOTE_CONTROL_SERVICE,
+            ),
+        )
 
     async def test_start_claude_remote_control_gives_up_after_all_probes(self) -> None:
         probe = AsyncMock()

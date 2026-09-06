@@ -616,6 +616,27 @@ class AuthorizationTests(HandlerTestCase):
         self.assertTrue(_authorized(update))
 
 
+class UnauthorizedUserTests(HandlerTestCase):
+    async def test_every_silent_handler_ignores_an_unlisted_user(self) -> None:
+        for handler in (
+            cmd_provider,
+            cmd_takeover,
+            cmd_new,
+            cmd_sessions,
+            cmd_session,
+            cmd_status,
+            cmd_stop,
+            cmd_claude_remote,
+            cmd_claude_remote_stop,
+            cmd_player,
+            handle_message,
+        ):
+            with self.subTest(handler=handler.__name__):
+                message = FakeMessage(text="hallo", user_id=OTHER_USER_ID)
+                await handler(FakeUpdate(message), FakeContext())
+                self.assertEqual(message.replies, [])
+
+
 class CmdStartTests(HandlerTestCase):
     async def test_unauthorized_user_is_refused(self) -> None:
         message = FakeMessage(user_id=OTHER_USER_ID)
@@ -630,11 +651,6 @@ class CmdStartTests(HandlerTestCase):
 
 
 class CmdProviderTests(HandlerTestCase):
-    async def test_unauthorized_user_gets_no_reply(self) -> None:
-        message = FakeMessage(user_id=OTHER_USER_ID)
-        await cmd_provider(FakeUpdate(message), FakeContext())
-        self.assertEqual(message.replies, [])
-
     async def test_without_arguments_reports_the_active_provider(self) -> None:
         message = FakeMessage()
         await cmd_provider(FakeUpdate(message), FakeContext())
@@ -660,11 +676,6 @@ class CmdProviderTests(HandlerTestCase):
 
 
 class CmdTakeoverTests(HandlerTestCase):
-    async def test_unauthorized_user_gets_no_reply(self) -> None:
-        message = FakeMessage(user_id=OTHER_USER_ID)
-        await cmd_takeover(FakeUpdate(message), FakeContext())
-        self.assertEqual(message.replies, [])
-
     async def test_takeover_with_a_local_session(self) -> None:
         record = _record(Provider.CODEX, self.project, self.root)
         message = FakeMessage()
@@ -683,11 +694,6 @@ class CmdTakeoverTests(HandlerTestCase):
 
 
 class CmdNewTests(HandlerTestCase):
-    async def test_unauthorized_user_gets_no_reply(self) -> None:
-        message = FakeMessage(user_id=OTHER_USER_ID)
-        await cmd_new(FakeUpdate(message), FakeContext())
-        self.assertEqual(message.replies, [])
-
     async def test_without_a_running_task(self) -> None:
         message = FakeMessage()
         await cmd_new(FakeUpdate(message), FakeContext())
@@ -702,11 +708,6 @@ class CmdNewTests(HandlerTestCase):
 
 
 class CmdSessionsTests(HandlerTestCase):
-    async def test_unauthorized_user_gets_no_reply(self) -> None:
-        message = FakeMessage(user_id=OTHER_USER_ID)
-        await cmd_sessions(FakeUpdate(message), FakeContext())
-        self.assertEqual(message.replies, [])
-
     async def test_no_local_sessions(self) -> None:
         message = FakeMessage()
         with patch("telegram_bot.discover_sessions", return_value=[]):
@@ -725,11 +726,6 @@ class CmdSessionsTests(HandlerTestCase):
 
 
 class CmdSessionTests(HandlerTestCase):
-    async def test_unauthorized_user_gets_no_reply(self) -> None:
-        message = FakeMessage(user_id=OTHER_USER_ID)
-        await cmd_session(FakeUpdate(message), FakeContext())
-        self.assertEqual(message.replies, [])
-
     async def test_without_arguments_prompts_for_usage(self) -> None:
         message = FakeMessage()
         await cmd_session(FakeUpdate(message), FakeContext())
@@ -763,11 +759,6 @@ class CmdSessionTests(HandlerTestCase):
 
 
 class CmdStatusTests(HandlerTestCase):
-    async def test_unauthorized_user_gets_no_reply(self) -> None:
-        message = FakeMessage(user_id=OTHER_USER_ID)
-        await cmd_status(FakeUpdate(message), FakeContext())
-        self.assertEqual(message.replies, [])
-
     async def test_reports_ready_without_a_session(self) -> None:
         message = FakeMessage()
         await cmd_status(FakeUpdate(message), FakeContext())
@@ -797,11 +788,6 @@ class CmdStatusTests(HandlerTestCase):
 
 
 class CmdStopTests(HandlerTestCase):
-    async def test_unauthorized_user_gets_no_reply(self) -> None:
-        message = FakeMessage(user_id=OTHER_USER_ID)
-        await cmd_stop(FakeUpdate(message), FakeContext())
-        self.assertEqual(message.replies, [])
-
     async def test_without_a_running_task(self) -> None:
         message = FakeMessage()
         await cmd_stop(FakeUpdate(message), FakeContext())
@@ -817,11 +803,6 @@ class CmdStopTests(HandlerTestCase):
 
 
 class CmdClaudeRemoteTests(HandlerTestCase):
-    async def test_unauthorized_user_gets_no_reply(self) -> None:
-        message = FakeMessage(user_id=OTHER_USER_ID)
-        await cmd_claude_remote(FakeUpdate(message), FakeContext())
-        self.assertEqual(message.replies, [])
-
     async def test_success_reports_the_remote_control_url(self) -> None:
         message = FakeMessage()
         with patch("telegram_bot._start_claude_remote_control", AsyncMock()):
@@ -835,11 +816,6 @@ class CmdClaudeRemoteTests(HandlerTestCase):
             await cmd_claude_remote(FakeUpdate(message), FakeContext())
         self.assertEqual(message.replies, ["⚠️ nicht aktiv"])
 
-    async def test_unauthorized_stop_gets_no_reply(self) -> None:
-        message = FakeMessage(user_id=OTHER_USER_ID)
-        await cmd_claude_remote_stop(FakeUpdate(message), FakeContext())
-        self.assertEqual(message.replies, [])
-
     async def test_stop_reports_success(self) -> None:
         message = FakeMessage()
         with patch("telegram_bot._run_systemctl", AsyncMock()) as mocked:
@@ -849,11 +825,6 @@ class CmdClaudeRemoteTests(HandlerTestCase):
 
 
 class CmdPlayerTests(HandlerTestCase):
-    async def test_unauthorized_user_gets_no_reply(self) -> None:
-        message = FakeMessage(user_id=OTHER_USER_ID)
-        await cmd_player(FakeUpdate(message), FakeContext())
-        self.assertEqual(message.replies, [])
-
     async def test_missing_environment_file(self) -> None:
         message = FakeMessage()
         await cmd_player(FakeUpdate(message), FakeContext())
@@ -882,11 +853,6 @@ class CmdPlayerTests(HandlerTestCase):
 
 
 class HandleMessageTests(HandlerTestCase):
-    async def test_unauthorized_user_gets_no_reply(self) -> None:
-        message = FakeMessage(text="hallo", user_id=OTHER_USER_ID)
-        await handle_message(FakeUpdate(message), FakeContext())
-        self.assertEqual(message.replies, [])
-
     async def test_empty_text_is_ignored(self) -> None:
         message = FakeMessage(text=None)
         await handle_message(FakeUpdate(message), FakeContext())

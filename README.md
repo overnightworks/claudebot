@@ -47,6 +47,9 @@ Creates `.venv`, the same `.venv/bin/python` the systemd unit and
 .venv/bin/python -m pytest
 ```
 
-CI runs the same command with branch coverage and uploads the resulting
-`coverage.xml` to SonarCloud. A "SonarCloud open findings" step then fails
-the build on any open finding in scope.
+CI runs the same command with branch coverage and keeps the resulting
+`coverage.xml` as an artifact. Once `SONAR_TOKEN` is configured, the sonar
+job arms itself: it uploads that coverage and a "SonarCloud open findings"
+step fails the build on any open finding in scope. Until then every step of
+that job is skipped — the job says so with a notice — and SonarCloud's
+Automatic Analysis measures the repository while it is private.

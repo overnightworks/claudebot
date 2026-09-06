@@ -7,6 +7,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
+from uuid import uuid4
 
 import check_root_layout
 from check_root_layout import (
@@ -118,6 +119,21 @@ class RootLayoutGateInProcessTest(TemporaryRepositoryTestCase):
             set(repository_listing(self.repository)),
             {"README.md", ".gitignore", "NOTES.md", f"scripts/{GATE.name}"},
         )
+
+
+class PastedRootImageTest(unittest.TestCase):
+    """This repository's own answer to a pasted scratch image, which .gitignore owns."""
+
+    def test_this_repository_keeps_a_pasted_root_image_out_of_the_gate_s_listing(self) -> None:
+        for suffix in (".png", ".jpg", ".jpeg"):
+            with self.subTest(suffix=suffix):
+                pasted = check_root_layout.REPOSITORY_ROOT / f"pasted-{uuid4().hex}{suffix}"
+                pasted.write_bytes(b"pasted scratch")
+                self.addCleanup(pasted.unlink)
+
+                self.assertNotIn(
+                    pasted.name, repository_listing(check_root_layout.REPOSITORY_ROOT)
+                )
 
 
 class RootLayoutProblemsTest(unittest.TestCase):

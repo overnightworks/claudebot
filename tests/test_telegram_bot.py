@@ -2,7 +2,7 @@ import asyncio
 import os
 import logging
 import tempfile
-import time
+import timeit
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -350,6 +350,28 @@ class LoadConfigTests(unittest.TestCase):
             self.assertIsNone(config.codex_model)
 
 
+# Quadrupling path-shaped text costs a linear scan four times as much and a
+# backtracking one sixteen; the headroom sits between the two so the assertion
+# reads the growth curve rather than this machine's current load. The floor
+# keeps scheduler noise from turning a sub-millisecond pair into a failure.
+_PATHOLOGICAL_SEGMENTS = 500
+_GROWTH_FACTOR = 4
+_LINEAR_GROWTH_HEADROOM = 8.0
+_MEASUREMENT_FLOOR_SECONDS = 0.05
+# The bound the pattern once applied to a whole path, truncating anything
+# longer to its tail; the fixtures below stay above it on purpose.
+_LENGTH_THAT_USED_TO_TRUNCATE = 255
+
+
+def _seconds_to_scan(segments: int) -> float:
+    payload = ("/segment.name" * segments) + "!"
+    return min(
+        timeit.repeat(
+            lambda: _find_audio_files(payload, Path("/tmp")), repeat=3, number=1
+        )
+    )
+
+
 class AudioBoundaryTests(unittest.TestCase):
     def test_only_project_audio_is_returned(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -393,11 +415,34 @@ class AudioBoundaryTests(unittest.TestCase):
                 found = _find_audio_files(str(audio), project)
             self.assertEqual(found, [])
 
-    def test_pathological_input_does_not_cause_super_linear_backtracking(self) -> None:
-        payload = ("/segment.name" * 2_000) + "!"
-        start = time.monotonic()
-        _find_audio_files(payload, Path("/tmp"))
-        self.assertLess(time.monotonic() - start, 1.0)
+    def test_a_deep_path_is_matched_in_full(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "project"
+            deep = project.joinpath(*["d" * 8 for _ in range(30)])
+            deep.mkdir(parents=True)
+            audio = deep / "clip.mp3"
+            audio.write_bytes(b"audio")
+            self.assertGreater(len(str(audio)), _LENGTH_THAT_USED_TO_TRUNCATE)
+            found = _find_audio_files(f"fertig: {audio}", project)
+            self.assertEqual(found, [audio])
+
+    def test_a_long_filename_is_matched_in_full(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "project"
+            project.mkdir(parents=True)
+            audio = project / ("n" * 251 + ".mp3")
+            audio.write_bytes(b"audio")
+            self.assertGreater(len(str(audio)), _LENGTH_THAT_USED_TO_TRUNCATE)
+            found = _find_audio_files(f"fertig: {audio}", project)
+            self.assertEqual(found, [audio])
+
+    def test_scanning_pathological_input_grows_linearly_with_its_length(self) -> None:
+        short = _seconds_to_scan(_PATHOLOGICAL_SEGMENTS)
+        long = _seconds_to_scan(_PATHOLOGICAL_SEGMENTS * _GROWTH_FACTOR)
+        self.assertLessEqual(
+            long,
+            short * _LINEAR_GROWTH_HEADROOM + _MEASUREMENT_FLOOR_SECONDS,
+        )
 
 
 class BotRuntimeMethodTests(unittest.TestCase):

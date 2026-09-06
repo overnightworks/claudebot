@@ -46,19 +46,19 @@ MAX_REPLY_CHUNK = 4_000
 MAX_AUDIO_BYTES = 50 * 1024 * 1024
 CLAUDE_REMOTE_CONTROL_SERVICE = "claude-remote-control.service"
 
-# POSIX NAME_MAX (Linux ext4 and friends): the longest a single path
-# component can be. Bounding the quantifier below caps how far the engine
-# ever has to backtrack from a candidate match, which keeps a long run of
-# path-shaped text linear instead of quadratic in its length; an unbounded
-# class combined with the trailing literal ".mp3"/".wav" was super-linear on
-# pathological input (measured: quadratic backtracking over embedded dots).
-_MAX_AUDIO_PATH_COMPONENT_LENGTH = 255
+# POSIX PATH_MAX (Linux): the longest a whole path can be. The quantifier
+# below spans the entire path, "/" included, so a shorter bound would truncate
+# a deep path to its tail and make the match unresolvable.
+_MAX_AUDIO_PATH_LENGTH = 4096
 
 # One flat character class over path characters (including "/") replaces the
 # former two alternatives of nested `(group)+` repetitions; `\w` already
-# covers `_`, so it is not repeated in the class.
+# covers `_`, so it is not repeated in the class. The lookbehind pins a match
+# to the start of a path-shaped run: without it the engine retries the whole
+# bounded quantifier at every offset of a long run, which is what made a
+# pathological line quadratic in its length.
 _AUDIO_PATH_PATTERN = re.compile(
-    rf"[\w./-]{{1,{_MAX_AUDIO_PATH_COMPONENT_LENGTH}}}\.(?:mp3|wav)"
+    rf"(?<![\w./-])[\w./-]{{1,{_MAX_AUDIO_PATH_LENGTH}}}\.(?:mp3|wav)"
 )
 
 SYSTEM_PROMPT = (

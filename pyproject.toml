@@ -1,0 +1,15 @@
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=agent_bridge --cov=telegram_bot --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml"
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]

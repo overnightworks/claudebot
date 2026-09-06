@@ -523,8 +523,9 @@ class BotRuntimeMethodTests(unittest.TestCase):
             patch("telegram_bot.session_is_active", return_value=True),
         ):
             self.runtime.takeover()
+            refused_turn = self.runtime.ask("hi")
             with self.assertRaises(BridgeError):
-                asyncio.run(self.runtime.ask("hi"))
+                asyncio.run(refused_turn)
 
     def test_ask_updates_the_bound_session_id(self) -> None:
         reply = AgentReply(text="hallo", session_id=OTHER_SESSION_ID, delivered_during_run=False)

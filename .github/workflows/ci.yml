@@ -14,18 +14,31 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor `requires-python = ">=3.12"` admits, and the interpreter
+        # the live agent-telegram.service runs.
+        python-version: ['3.12', '3.14']
+        include:
+          # Coverage travels to SonarCloud from the live service's interpreter
+          # only, so the artifact name stays unique and the scan has one
+          # source. The flag rides the entry so the two cannot drift apart.
+          - python-version: '3.14'
+            uploads-coverage: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: uv sync --locked --no-build --group dev
       - name: Run tests with coverage
         run: .venv/bin/python -m pytest
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        if: ${{ matrix.uploads-coverage }}
         with:
           name: coverage-report
           path: coverage.xml

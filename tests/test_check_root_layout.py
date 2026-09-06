@@ -1,9 +1,12 @@
+import io
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 import check_root_layout
 from check_root_layout import (
@@ -11,6 +14,8 @@ from check_root_layout import (
     DIRECTORY_HOME,
     HOME_BY_SUFFIX,
     REPOSITORY_ALLOWLIST,
+    main,
+    repository_listing,
     root_layout_problems,
 )
 
@@ -18,8 +23,8 @@ from check_root_layout import (
 GATE = Path(check_root_layout.__file__).resolve()
 
 
-class RootLayoutGateProcessTest(unittest.TestCase):
-    """The gate as CI runs it: a python process over the script, started somewhere."""
+class TemporaryRepositoryTestCase(unittest.TestCase):
+    """A throwaway git repository carrying a copy of the gate, allowlisted as it stands."""
 
     def setUp(self) -> None:
         directory = tempfile.TemporaryDirectory()
@@ -28,12 +33,19 @@ class RootLayoutGateProcessTest(unittest.TestCase):
         (self.repository / "scripts").mkdir()
         shutil.copy(GATE, self.repository / "scripts" / GATE.name)
         (self.repository / "README.md").write_text("a repository the gate is happy with\n")
+        self._git("init", "--quiet")
+
+    def _git(self, *arguments: str) -> None:
         subprocess.run(
-            ["git", "init", "--quiet"],
+            ["git", *arguments],
             cwd=self.repository,
             check=True,
             capture_output=True,
         )
+
+
+class RootLayoutGateProcessTest(TemporaryRepositoryTestCase):
+    """The gate as CI runs it: a python process over the script, started somewhere."""
 
     def _run_gate(self, working_directory: Path) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -67,6 +79,45 @@ class RootLayoutGateProcessTest(unittest.TestCase):
         completed = self._run_gate(self.repository)
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
+
+
+class RootLayoutGateInProcessTest(TemporaryRepositoryTestCase):
+    """The same gate called in this process, so its own coverage is measured."""
+
+    def _judge_the_temporary_repository(self) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(check_root_layout, "REPOSITORY_ROOT", self.repository):
+            with redirect_stdout(out), redirect_stderr(err):
+                exit_code = main()
+        return exit_code, out.getvalue(), err.getvalue()
+
+    def test_the_gate_passes_on_an_allowlisted_tree(self) -> None:
+        exit_code, stdout, stderr = self._judge_the_temporary_repository()
+
+        self.assertEqual(exit_code, 0, stderr)
+        self.assertIn("passed", stdout)
+
+    def test_the_gate_fails_naming_every_stray_and_where_it_belongs(self) -> None:
+        (self.repository / "NOTES.md").write_text("a stray at the root\n")
+        (self.repository / "tooling").mkdir()
+        (self.repository / "tooling" / "helper.py").write_text("a stray directory\n")
+
+        exit_code, _, stderr = self._judge_the_temporary_repository()
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn(f"NOTES.md: {HOME_BY_SUFFIX['.md']}", stderr)
+        self.assertIn(f"tooling/: {DIRECTORY_HOME}", stderr)
+
+    def test_the_listing_holds_tracked_and_unignored_untracked_paths(self) -> None:
+        (self.repository / ".gitignore").write_text("/*.png\n")
+        (self.repository / "Eingef\u00fcgtes Bild.png").write_bytes(b"pasted scratch")
+        (self.repository / "NOTES.md").write_text("a stray at the root\n")
+        self._git("add", "README.md")
+
+        self.assertEqual(
+            set(repository_listing(self.repository)),
+            {"README.md", ".gitignore", "NOTES.md", f"scripts/{GATE.name}"},
+        )
 
 
 class RootLayoutProblemsTest(unittest.TestCase):

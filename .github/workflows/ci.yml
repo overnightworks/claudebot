@@ -79,16 +79,18 @@ jobs:
       # The gate the scan waits on grades ratings, so this step asks the API
       # for open findings itself. How it asks — the scoped query, the proof
       # that the scope resolves before a zero reads as clean, the credential
-      # that never leaves a header — is owned by the script, where it is
-      # scanned and covered like the rest of this repository.
+      # that never leaves a header — is owned by the fleet's action, which
+      # this repository consumes instead of copying. It reads this
+      # repository's own sonar-project.properties from the workspace, so the
+      # project it asks about is this one. The reference is pinned to a
+      # commit: a tag or a branch on a step guarding security findings is a
+      # supply-chain hole and a silent change to what the gate asserts.
       - name: SonarCloud open findings
         if: ${{ env.SONAR_ENABLED == 'true' }}
-        # The script bounds each call; this is the hard ceiling, because it
-        # pages and a per-call bound multiplies.
+        # The action bounds each call; this is the hard ceiling, because it
+        # pages and a per-call bound multiplies. A composite action's inner
+        # steps take no timeout-minutes, so the ceiling belongs to this step.
         timeout-minutes: 5
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: python3 scripts/sonar_findings_gate.py
+        uses: overnightworks/marketplace/.github/actions/sonar-findings-gate@85b0e13e0530ed12b5a81208681015eda6f7854b  # sonar-findings-gate-v1
+        with:
+          sonar-token: ${{ secrets.SONAR_TOKEN }}

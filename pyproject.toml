@@ -20,7 +20,7 @@ pythonpath = ["src", "scripts"]
 testpaths = ["tests"]
 # The gate under scripts/ is measured like the package: it is the check CI
 # runs, so a change there is new code the coverage floor holds too.
-addopts = "--cov=claudebot --cov=check_root_layout --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=100"
+addopts = "--cov=claudebot --cov=check_root_layout --cov=sonar_findings_gate --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=100"
 
 [tool.coverage.report]
 exclude_lines = [

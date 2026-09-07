@@ -76,70 +76,19 @@ jobs:
         if: ${{ env.SONAR_ENABLED == 'true' }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      # The scan step above blocks on the analysis (sonar.qualitygate.wait=true
-      # in sonar-project.properties), so the report this reads is already
-      # final. The quality gate itself passes on ratings (A/B/C), not on "0
-      # findings" (issue #143 in agent-claim); this queries the API directly
-      # for that stronger bar and fails loud, with the list, when it is not
-      # met. The project is private, so the request authenticates with
-      # SONAR_TOKEN as the HTTP basic auth user name and an empty password.
+      # The gate the scan waits on grades ratings, so this step asks the API
+      # for open findings itself. How it asks — the scoped query, the proof
+      # that the scope resolves before a zero reads as clean, the credential
+      # that never leaves a header — is owned by the script, where it is
+      # scanned and covered like the rest of this repository.
       - name: SonarCloud open findings
         if: ${{ env.SONAR_ENABLED == 'true' }}
+        # The script bounds each call; this is the hard ceiling, because it
+        # pages and a per-call bound multiplies.
+        timeout-minutes: 5
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          component_key="$(sed -n 's/^sonar\.projectKey=//p' sonar-project.properties)"
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
-            scope_query="pullRequest=${PULL_REQUEST_NUMBER}"
-          else
-            scope_query="branch=main"
-          fi
-          python3 - "${component_key}" "${scope_query}" <<'PYTHON'
-          import base64
-          import json
-          import os
-          import sys
-          import urllib.request
-
-          component_key, scope_query = sys.argv[1], sys.argv[2]
-          auth_header = "Basic " + base64.b64encode(f'{os.environ["SONAR_TOKEN"]}:'.encode()).decode()
-
-          class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
-              # A redirect off sonarcloud.io would carry the Authorization
-              # header to whatever host it names; refuse to follow one instead.
-              def redirect_request(self, *args, **kwargs):
-                  return None
-
-          opener = urllib.request.build_opener(NoRedirectHandler)
-
-          def fetch_page(page: int) -> dict:
-              url = (
-                  "https://sonarcloud.io/api/issues/search"
-                  f"?componentKeys={component_key}&{scope_query}&issueStatuses=OPEN,CONFIRMED,ACCEPTED,FALSE_POSITIVE&ps=100&p={page}"
-              )
-              request = urllib.request.Request(url, headers={"Authorization": auth_header})
-              with opener.open(request) as response:
-                  return json.load(response)
-
-          page = 1
-          printed = 0
-          total = None
-          while total is None or printed < total:
-              report = fetch_page(page)
-              total = report["total"]
-              for issue in report["issues"]:
-                  file_path = issue["component"].split(":", 1)[1]
-                  line = issue.get("line", "?")
-                  print(f'{issue["rule"]} {file_path}:{line} {issue["message"]}')
-                  printed += 1
-              if not report["issues"]:
-                  break
-              page += 1
-
-          if total > 0:
-              print(f"{total} open SonarCloud finding(s) in scope {scope_query}", file=sys.stderr)
-              sys.exit(1)
-          PYTHON
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: python3 scripts/sonar_findings_gate.py

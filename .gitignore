@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .coverage
 coverage.xml
+.env
 
 # Images pasted into the working checkout are scratch, never repository
 # content; scripts/check_root_layout.py reads the tree as git sees it.

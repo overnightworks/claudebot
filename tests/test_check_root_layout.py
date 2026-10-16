@@ -147,6 +147,7 @@ class RootLayoutProblemsTest(unittest.TestCase):
             "pyproject.toml",
             "sonar-project.properties",
             "uv.lock",
+            ".aco/board.toml",
             ".github/workflows/ci.yml",
             "deploy/agent-telegram.service",
             "scripts/bot_start.sh",

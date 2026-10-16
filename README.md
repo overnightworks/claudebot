@@ -50,8 +50,9 @@ Creates `.venv`, the same `.venv/bin/python` the systemd unit and
 `scripts/check_root_layout.py` is the gate CI runs before them: the repository
 root holds only what AGENTS.md, "Repository layout", allows.
 
-CI runs the same command with branch coverage and hands the resulting
-`coverage.xml` (artifact `coverage`) to the shared `overnightworks/quality`
-gate. Its `quality / verdict` check is the required check on `main`; the
-gate's `quality / sonar` job is the only SonarCloud scan and fails when
-`SONAR_TOKEN` is missing or empty. AGENTS.md, "Quality gate", has the details.
+CI runs the same command with branch coverage and keeps the resulting
+`coverage.xml` as an artifact. Once `SONAR_TOKEN` is configured, the sonar
+job arms itself: it uploads that coverage and a "SonarCloud open findings"
+step fails the build on any open finding in scope. Until then every step of
+that job is skipped — the job says so with a notice — and SonarCloud's
+Automatic Analysis measures the repository while it is private.

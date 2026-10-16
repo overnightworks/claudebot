@@ -4,7 +4,8 @@ The root carries the package manifest and its lockfile, the scanner
 configuration, the licence, and the entry documents AGENTS.md names. Everything
 else lives in the directory of its owner (AGENTS.md, "Repository layout"): the
 modules in the package under `src/`, the bot scripts under `scripts/`, the
-systemd unit under `deploy/`. The gate reads the tree as git sees it -- tracked
+systemd unit under `deploy/`, the work-board contract `board.toml` of the aco
+coordination tool under `.aco/`. The gate reads the tree as git sees it -- tracked
 files and untracked files git does not ignore -- so a file that strays onto a
 runner is red too, and every refusal names where the file belongs.
 """
@@ -33,7 +34,7 @@ ROOT_FILES = frozenset(
         "uv.lock",
     }
 )
-ROOT_DIRECTORIES = frozenset({".github", "deploy", "scripts", "src", "tests"})
+ROOT_DIRECTORIES = frozenset({".aco", ".github", "deploy", "scripts", "src", "tests"})
 HOME_BY_SUFFIX = {
     ".py": "a module belongs in the package under src/, a helper under scripts/",
     ".sh": "a script belongs under scripts/",

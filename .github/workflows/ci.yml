@@ -45,6 +45,7 @@ jobs:
           name: coverage
           path: coverage.xml
           if-no-files-found: error
+          retention-days: 1
 
   quality:
     needs: [check]

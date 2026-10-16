@@ -40,57 +40,21 @@ jobs:
       - name: Run tests with coverage
         run: .venv/bin/python -m pytest
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-        if: ${{ matrix.uploads-coverage }}
+        if: ${{ !cancelled() && matrix.uploads-coverage }}
         with:
-          name: coverage-report
+          name: coverage
           path: coverage.xml
           if-no-files-found: error
+          retention-days: 1
 
-  sonar:
-    needs: check
-    runs-on: ubuntu-latest
-    # The repository is private and the org SONAR_TOKEN secret is not
-    # delivered to it; SonarCloud's Automatic Analysis covers it instead.
-    # Every step below arms itself once SONAR_TOKEN is set (repository turns
-    # public, or carries the secret), at which point the head switches
-    # Automatic Analysis back off.
-    env:
-      SONAR_ENABLED: ${{ secrets.SONAR_TOKEN != '' }}
-    steps:
-      # Unguarded: a green sonar job must visibly say whether it actually
-      # scanned or deliberately skipped, not just "green because every step
-      # was conditioned away".
-      - name: Report skip when no SONAR_TOKEN is configured
-        if: ${{ env.SONAR_ENABLED != 'true' }}
-        run: "echo '::notice::SonarCloud scan skipped: no SONAR_TOKEN configured'"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
-        if: ${{ env.SONAR_ENABLED == 'true' }}
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-        if: ${{ env.SONAR_ENABLED == 'true' }}
-        with:
-          name: coverage-report
-      - uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f  # v8.2.1
-        if: ${{ env.SONAR_ENABLED == 'true' }}
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      # The gate the scan waits on grades ratings, so this step asks the API
-      # for open findings itself. How it asks — the scoped query, the proof
-      # that the scope resolves before a zero reads as clean, the credential
-      # that never leaves a header — is owned by the fleet's action, which
-      # this repository consumes instead of copying. It reads this
-      # repository's own sonar-project.properties from the workspace, so the
-      # project it asks about is this one. The reference is pinned to a
-      # commit: a tag or a branch on a step guarding security findings is a
-      # supply-chain hole and a silent change to what the gate asserts.
-      - name: SonarCloud open findings
-        if: ${{ env.SONAR_ENABLED == 'true' }}
-        # The action bounds each call; this is the hard ceiling, because it
-        # pages and a per-call bound multiplies. A composite action's inner
-        # steps take no timeout-minutes, so the ceiling belongs to this step.
-        timeout-minutes: 5
-        uses: overnightworks/marketplace/.github/actions/sonar-findings-gate@85b0e13e0530ed12b5a81208681015eda6f7854b  # sonar-findings-gate-v1
-        with:
-          sonar-token: ${{ secrets.SONAR_TOKEN }}
+  quality:
+    needs: [check]
+    if: always()
+    permissions:
+      contents: read
+      actions: read
+    uses: overnightworks/quality/.github/workflows/gate.yml@75467b7888ab8158dda370c770d3323dfc1f594e  # v0.1.1
+    with:
+      coverage-artifact: coverage
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

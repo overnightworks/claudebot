@@ -34,7 +34,7 @@ ROOT_FILES = frozenset(
         "uv.lock",
     }
 )
-ROOT_DIRECTORIES = frozenset({".aco", ".github", "deploy", "scripts", "src", "tests"})
+ROOT_DIRECTORIES = frozenset({".aco", ".github", "deploy", "quality", "scripts", "src", "tests"})
 HOME_BY_SUFFIX = {
     ".py": "a module belongs in the package under src/, a helper under scripts/",
     ".sh": "a script belongs under scripts/",

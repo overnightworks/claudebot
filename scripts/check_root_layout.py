@@ -1,13 +1,15 @@
-"""The root layout gate: the repository root holds only what a tool must find there.
+"""The root layout gate: the repository root holds only what a tool must
+find there.
 
 The root carries the package manifest and its lockfile, the scanner
-configuration, the licence, and the entry documents AGENTS.md names. Everything
-else lives in the directory of its owner (AGENTS.md, "Repository layout"): the
-modules in the package under `src/`, the bot scripts under `scripts/`, the
-systemd unit under `deploy/`, the work-board contract `board.toml` of the aco
-coordination tool under `.aco/`. The gate reads the tree as git sees it -- tracked
-files and untracked files git does not ignore -- so a file that strays onto a
-runner is red too, and every refusal names where the file belongs.
+configuration, the licence, and the entry documents the global contract
+names. Everything else lives in the directory of its owner (global contract,
+"Repository layout"): the modules in the package under `src/`, the bot
+scripts under `scripts/`, the systemd unit under `deploy/`, the work-board
+contract `board.toml` of the aco coordination tool under `.aco/`. The gate
+reads the tree as git sees it -- tracked files and untracked files git does
+not ignore -- so a file that strays onto a runner is red too, and every
+refusal names where the file belongs.
 """
 
 from __future__ import annotations

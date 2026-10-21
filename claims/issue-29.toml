@@ -1,0 +1,7 @@
+claim_id = "e50fca5ba59243449ff133d0d0efa9af"
+agent = "claude"
+role = "builder"
+base = "621ee65fde415403e00e3a4e6a9691be2cd704d9"
+branch = "claude/issue-29-agents-md-repo-facts"
+scope = ["AGENTS.md", "README.md", "scripts/check_root_layout.py"]
+opened_commit = "31ab9265c1aec9bf196d1b19ac2d200a162d7ae4"

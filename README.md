@@ -48,7 +48,8 @@ Creates `.venv`, the same `.venv/bin/python` the systemd unit and
 ```
 
 `scripts/check_root_layout.py` is the gate CI runs before them: the repository
-root holds only what AGENTS.md, "Repository layout", allows.
+root holds only what the global contract's "Repository layout" (Code policy)
+allows.
 
 CI runs the same command with branch coverage and hands the resulting
 `coverage.xml` (artifact `coverage`) to the shared `overnightworks/quality`
